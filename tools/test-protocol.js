@@ -100,19 +100,21 @@ function main() {
         const tile = map.getTile(12, 11, 7);       // barandilla (siempre arriba)
         const data = P.describeTile(tile, map.getGround(12, 11, 7));
 
-        check('un tile se describe con suelo, cantidad de items y los items',
-            data[0] === 102 && data[1] === 1 && data[2] === 112,
-            'suelo ' + data[0] + ', ' + data[1] + ' item(s): ' + data.slice(2).join(','));
+        check('un tile se describe con suelo, los dos cortes y los items',
+            data[0] === 102 && data[1] === 0 && data[2] === 1 && data[3] === 112,
+            'suelo ' + data[0] + ', 0 abajo, 1 en total: ' + data.slice(3).join(','));
 
         const lever = map.getTile(11, 11, 7);
         const leverData = P.describeTile(lever, map.getGround(11, 11, 7));
         check('la palanca va en el mismo formato',
-            leverData[0] === 102 && leverData[1] === 1 && leverData[2] === 1948,
-            'suelo ' + leverData[0] + ', item ' + leverData[2]);
+            leverData[0] === 102 && leverData[1] === 1 && leverData[2] === 1 &&
+            leverData[3] === 1948,
+            'suelo ' + leverData[0] + ', 1 abajo de 1 total, item ' + leverData[3]);
 
         // El ORDEN es el de dibujo: suelo, items de abajo, items de arriba. El
         // cliente pinta en el orden en que llegan y por eso no necesita conocer
-        // las bandas de apilado.
+        // las bandas de apilado. Pero SI necesita saber donde esta el corte, para
+        // meter a las criaturas entre los dos grupos.
         const mixed = new (require('../engine/world/tile').Tile)(60, 60, 7);
         const { Item } = require('../engine/world/item');
         mixed.setGround(new Item(world.itemTypes.get(102)));
@@ -121,8 +123,12 @@ function main() {
 
         const mixedData = P.describeTile(mixed, null);
         check('los items se envian en orden de DIBUJO, no de almacenamiento',
-            mixedData[0] === 102 && mixedData[2] === 111 && mixedData[5] === 112,
+            mixedData[0] === 102 && mixedData[3] === 111 && mixedData[6] === 112,
             'suelo, luego el muro (abajo), luego la barandilla (arriba)');
+
+        check('y el corte entre abajo y arriba viaja en el mensaje',
+            mixedData[1] === 1 && mixedData[2] === 2,
+            '1 item abajo de 2 en total: el cliente dibuja las criaturas entre ambos');
     }
 
     {

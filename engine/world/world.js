@@ -486,6 +486,14 @@ class World {
         // después aprovechando un contador viejo.
         creature.nextStepAt = this.now();
 
+        /**
+         * Y la duración del paso se pone a cero, porque un teletransporte NO se
+         * anda. Sin esto, el cliente recibiría el salto con la duración del último
+         * paso que dio la criatura y vería al muñeco deslizarse por media pantalla
+         * durante medio segundo en vez de aparecer.
+         */
+        creature.lastStepDuration = 0;
+
         return { moved: true, from: from, to: target };
     }
 

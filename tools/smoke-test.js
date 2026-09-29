@@ -18,6 +18,7 @@
  * Salida: código 0 si todo pasa, 1 si algo falla.
  */
 
+const ensureLegacyServer = require('./ensure-legacy-server');
 const WebSocket = require('ws');
 const Types = require('../shared/js/gametypes');
 
@@ -237,7 +238,14 @@ const botA = new Bot('bot-A');
 const botB = new Bot('bot-B');
 
 async function main() {
-    console.log('Prueba de humo contra ws://' + HOST + ':' + PORT + '/\n');
+    // Se arranca el servidor si no lo esta. Sin esto, la prueba falla con un
+    // `fetch failed` que parece un fallo del codigo cuando lo unico que pasa es
+    // que nadie levanto el servidor.
+    const server = ensureLegacyServer.keepAliveUntilExit(
+        await ensureLegacyServer.ensureServer({ host: HOST, port: PORT }));
+
+    console.log('Prueba de humo contra ws://' + HOST + ':' + PORT + '/' +
+        (server.started ? ' (servidor arrancado por la prueba)' : '') + '\n');
 
     const a = botA;
     const b = botB;
@@ -390,3 +398,4 @@ main()
         console.log('\u001b[31m' + failures + ' comprobación(es) fallaron\u001b[0m');
         process.exit(1);
     });
+

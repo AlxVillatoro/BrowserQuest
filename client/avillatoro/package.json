@@ -1,0 +1,5 @@
+{
+    "//": "Marca este directorio como modulos ES para Node. Sin esto, Node avisa de que reparsea cada .js porque no son CommonJS, y el aviso aparece en cada prueba. La raiz del proyecto NO puede ser type module porque el motor esta en CommonJS, asi que la marca va donde toca: aqui.",
+    "type": "module",
+    "private": true
+}

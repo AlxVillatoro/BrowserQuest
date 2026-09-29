@@ -25,6 +25,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const ensureLegacyServer = require('./ensure-legacy-server');
 const posix = path.posix;
 
 const HOST = process.argv[2] || 'localhost';
@@ -269,7 +270,14 @@ async function checkIndexAndSprites() {
 }
 
 async function main() {
-    console.log('Comprobación del cliente contra ' + ORIGIN + '\n');
+    // Se arranca el servidor si no lo esta: esta comprobacion va por HTTP, asi que
+    // sin servidor todas las peticiones fallan y el informe se llena de errores que
+    // no son del cliente.
+    const server = ensureLegacyServer.keepAliveUntilExit(
+        await ensureLegacyServer.ensureServer({ host: HOST, port: PORT }));
+
+    console.log('Comprobación del cliente contra ' + ORIGIN +
+        (server.started ? ' (servidor arrancado por la prueba)' : '') + '\n');
 
     const graphOk = await checkModuleGraph();
     await checkIndexAndSprites();

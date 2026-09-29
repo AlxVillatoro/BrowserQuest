@@ -121,9 +121,11 @@ falta tocar el motor para añadir un hechizo, la arquitectura está mal.
 | Protocolo y vista (qué ve el cliente) | hecho y probado |
 | Sesiones y autoridad del servidor | hecho y probado |
 | Servidor WebSocket, con agrupado por tick | hecho y probado por red |
-| Cliente que consuma el protocolo nuevo | pendiente |
-| Hechizos de área, invocación, huida | pendiente |
-| Frases de los monstruos (`voices`) | pendiente (los datos ya se cargan) |
+| Cliente: cámara, orden de dibujo (2.5D) | hecho y probado |
+| Cliente: conexión, mundo espejo, interpolación | hecho y probado |
+| Cliente: proveedor de sprites de procedimiento | hecho (sin assets reales) |
+| Cliente: lectura de `.dat`/`.spr` | pendiente |
+| Predicción en el cliente | pendiente |
 | Persistencia | pendiente |
 | Importadores OTBM/OTB/DAT/SPR | pendiente |
 
@@ -515,9 +517,34 @@ Tres decisiones que costaron un error cada una:
   un socket. El servidor WebSocket es un adaptador encima, y esa es la siguiente
   pieza.
 
-**Fase 6 — Cliente.** Reescribir el cliente heredado para que consuma este
-protocolo. Hoy el cliente de BrowserQuest es **cliente-autoritativo para el
-movimiento**, que es justo lo contrario de lo que hace el motor nuevo.
+**Fase 6 — Cliente.** *Hecha, salvo los assets reales.* Cámara con desplazamiento
+por planta, orden de dibujo por diagonales, mundo espejo que sólo contiene lo que el
+motor ha mandado, interpolación de movimientos, conexión con reconexión, y un
+proveedor de sprites de procedimiento para poder jugar sin assets de Tibia.
+
+El 2.5D NO es una proyección: los tiles son cuadrados en una rejilla, y la
+sensación de profundidad sale de dos cosas, las dos verificables sin navegador.
+
+- **El desplazamiento por planta.** Cada planta se corre en diagonal respecto a la
+  de la cámara, una casilla por planta de diferencia, y hacia abajo-derecha las de
+  arriba. El signo tiene una razón que se ve al dibujar: una plataforma elevada
+  tiene que tapar el suelo que tiene delante, y ese suelo está abajo y a la derecha
+  en la pantalla. El criterio es el de OTClient, que en `MapView` ajusta cada planta
+  con `coveredUp(cameraZ - iz)`; no se copia su código, sino el hecho geométrico.
+- **El orden de pintado.** De la planta más profunda a la más alta, y dentro de cada
+  una por diagonales de arriba-izquierda a abajo-derecha. Suena arbitrario y no lo
+  es: un muñeco se dibuja desde su casilla hacia arriba, así que lo que está más
+  abajo en pantalla tiene que pintarse después para taparlo.
+
+Dónde vive cada cosa también es una decisión: **el motor no envía los
+desplazamientos**, porque son presentación. El motor decide qué plantas se ven y
+manda sus tiles; cómo se colocan en la pantalla es del cliente. Al principio había
+un `getFloorOffset` en el motor devolviendo ceros «a la espera de verificar la tabla
+de TFS», y estaba en el sitio equivocado.
+
+Lo que falta: la lectura de `.dat`/`.spr` (la interfaz del proveedor ya está
+preparada, enchufarlo es cambiar una línea), la predicción para que el teclado
+responda sin esperar a la ida y vuelta, y la animación de verdad de los muñecos.
 
 **Fase 7 — Persistencia.** Cuentas, personajes, inventario, storages. El grafo del
 mundo es circular (criatura → tile → criaturas) a propósito, así que habrá que
@@ -526,8 +553,8 @@ serializar campo a campo y no volcar el estado.
 **Fase 8 — Herramientas.** Importador/exportador OTBM, `otb2json`, `spr`→atlas.
 Sólo lo que no cubran las herramientas MIT.
 
-**Fase 9 — Render 2.5D.** Orden por diagonales, offset por planta, altura de
-sprite y sombra proyectada. Ver la sección de 2.5D del informe de mecánicas.
+**Fase 9 — Render 2.5D.** Hecho lo estructural (desplazamiento y orden). Falta la
+altura de sprite por item, las sombras proyectadas de verdad y el atlas.
 
 ---
 

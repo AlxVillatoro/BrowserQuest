@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Avillatoro — cliente</title>
+<style>
+    /*
+     * El cliente NO tiene estilos del juego mezclados con la lógica: esto es sólo
+     * el marco de la página. Todo lo que se ve dentro del lienzo lo dibuja el
+     * renderer, porque es el motor quien dice qué hay que ver.
+     */
+    * { box-sizing: border-box; }
+
+    html, body {
+        margin: 0;
+        padding: 0;
+        height: 100%;
+        background: #0a0a0e;
+        color: #d8d8e0;
+        font: 13px/1.5 ui-monospace, "Cascadia Mono", Consolas, monospace;
+        overflow: hidden;
+    }
+
+    #layout {
+        display: flex;
+        flex-direction: column;
+        height: 100%;
+    }
+
+    #stage {
+        position: relative;
+        flex: 1;
+        min-height: 0;
+    }
+
+    #game {
+        display: block;
+        width: 100%;
+        height: 100%;
+        /* Pixel art: interpolarlo lo convierte en manchas. */
+        image-rendering: pixelated;
+        cursor: crosshair;
+    }
+
+    #overlay {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: rgba(8, 8, 12, 0.92);
+        z-index: 10;
+    }
+
+    #login {
+        background: #16161d;
+        border: 1px solid #2c2c3a;
+        border-radius: 6px;
+        padding: 24px 28px;
+        min-width: 320px;
+    }
+
+    #login h1 {
+        margin: 0 0 4px;
+        font-size: 19px;
+        letter-spacing: 0.5px;
+        color: #e8e8f0;
+    }
+
+    #login p {
+        margin: 0 0 18px;
+        color: #8a8a9a;
+        font-size: 12px;
+    }
+
+    #login label {
+        display: block;
+        margin-bottom: 6px;
+        color: #a8a8b8;
+        font-size: 12px;
+    }
+
+    #login input {
+        width: 100%;
+        padding: 8px 10px;
+        margin-bottom: 14px;
+        background: #0d0d12;
+        border: 1px solid #2c2c3a;
+        border-radius: 4px;
+        color: #e8e8f0;
+        font: inherit;
+    }
+
+    #login input:focus {
+        outline: none;
+        border-color: #4a90d9;
+    }
+
+    #login button {
+        width: 100%;
+        padding: 9px;
+        background: #4a90d9;
+        border: 0;
+        border-radius: 4px;
+        color: #08101c;
+        font: inherit;
+        font-weight: 600;
+        cursor: pointer;
+    }
+
+    #login button:hover { background: #5aa0e9; }
+
+    #login .hint {
+        margin: 16px 0 0;
+        font-size: 11px;
+        color: #6a6a7a;
+        line-height: 1.6;
+    }
+
+    #chat-bar {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 6px 10px;
+        border-top: 1px solid #1e1e28;
+        background: #0d0d12;
+    }
+
+    #chat-bar span { color: #6a6a7a; }
+
+    #chat {
+        flex: 1;
+        padding: 5px 8px;
+        background: #08080c;
+        border: 1px solid #22222e;
+        border-radius: 3px;
+        color: #e8e8f0;
+        font: inherit;
+    }
+
+    #chat:focus { outline: none; border-color: #4a90d9; }
+
+    #status {
+        padding: 4px 10px;
+        background: #08080c;
+        border-top: 1px solid #1e1e28;
+        color: #8a8a9a;
+        font-size: 11px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    #diagnostics {
+        padding: 3px 10px;
+        background: #050508;
+        border-top: 1px solid #14141c;
+        color: #5a7a5a;
+        font-size: 10px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+</style>
+</head>
+<body>
+<div id="layout">
+
+    <div id="stage">
+        <canvas id="game"></canvas>
+
+        <div id="overlay">
+            <form id="login">
+                <h1>Avillatoro</h1>
+                <p>Cliente del motor nuevo</p>
+
+                <label for="name">Nombre</label>
+                <input id="name" maxlength="20" value="Aventurero" autocomplete="off">
+
+                <button type="submit">Entrar al mundo</button>
+
+                <p class="hint">
+                    Flechas o WASD para caminar &middot; con dos teclas a la vez,
+                    en diagonal<br>
+                    Intro para hablar &middot; Espacio para mirar donde pisas<br>
+                    Clic en una criatura para atacarla, o en el suelo para mirarlo
+                </p>
+            </form>
+        </div>
+    </div>
+
+    <form id="chat-bar">
+        <span>decir:</span>
+        <input id="chat" placeholder="pulsa Intro para escribir" autocomplete="off">
+    </form>
+
+    <div id="status">sin conectar</div>
+    <div id="diagnostics">esperando</div>
+</div>
+
+<!--
+    Se carga como módulo ES. Las rutas de los imports son las del MONTAJE del
+    servidor estático, no las del disco: `client_root` se sirve en la raíz, así que
+    este cliente vive en `/avillatoro/`, y `shared_root` se sirve en `/shared/`. Por
+    eso los módulos importan `/shared/js/protocol.mjs` y no una ruta relativa: el
+    protocolo está fuera de este directorio y es el mismo archivo que usa el motor.
+-->
+<script type="module" src="/avillatoro/js/main.js"></script>
+</body>
+</html>

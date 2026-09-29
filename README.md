@@ -21,14 +21,35 @@ Requiere **Node.js 20 o superior** (probado en Node 24).
 npm install
 
 npm run engine    # arranca el motor nuevo y resume el datapack cargado
-npm test          # verifica el motor entero (36 comprobaciones)
+npm test          # 360 comprobaciones: motor, mundo, simulación, combate, protocolo y cliente
 
-npm start         # arranca el servidor heredado, que sirve el juego jugable
+npm run serve     # arranca el SERVIDOR DE JUEGO del motor nuevo
+npm start         # arranca el servidor heredado, que sirve el juego de BrowserQuest
 ```
 
-Para jugar, `npm start` y abre **http://localhost:8000/**. El mismo proceso sirve
-el cliente y el WebSocket, así que no hace falta paso de build, ni servidor
-estático aparte.
+### El juego nuevo
+
+```bash
+npm run serve     # escucha en ws://localhost:8080
+npm start         # sirve los archivos en http://localhost:8000
+```
+
+Y abre **http://localhost:8000/avillatoro/index.html**. Hacen falta los dos
+procesos porque el motor y el servidor de archivos son cosas distintas a propósito:
+el cliente no depende de que el motor sepa servir páginas, ni el motor de que el
+cliente sepa dónde vive.
+
+Las flechas o WASD mueven (con dos teclas a la vez, en diagonal), Intro abre el
+chat, Espacio mira el tile donde pisas, y un clic ataca a la criatura que haya
+debajo o mira el suelo.
+
+Para apuntar a otro motor sin tocar el código:
+`.../avillatoro/index.html?ws=otra-maquina:8080`.
+
+### El juego heredado
+
+`npm start` y abre **http://localhost:8000/**. El mismo proceso sirve el cliente de
+BrowserQuest y su WebSocket, así que no hace falta paso de build.
 
 - `npm run engine:reload` — arranca el motor y comprueba la recarga en caliente.
 - `npm start -- server/config_local.json` — configuración alternativa del servidor
@@ -62,13 +83,16 @@ Todas se ejecutan con el servidor levantado (salvo `diag-world` y `audit-globals
 
 | Comando | Qué hace |
 |---|---|
-| `node tools/smoke-test.js` | **Prueba de humo end-to-end.** Abre dos conexiones WebSocket reales, completa el handshake de las dos y recorre el protocolo: centinela `go`, `HELLO`→`WELCOME`, movimiento entre jugadores, chat en ambos sentidos y `DESPAWN` al desconectar. Sale con código 1 si algo falla. Es la red de seguridad para todo lo que venga después. |
-| `node tools/check-client.js` | **Verifica que el cliente puede cargar todo lo que pide.** Recorre las dependencias de `define`/`require`/`importScripts` de `client/js` y pide cada destino por HTTP, además de comprobar que cada sprite tiene sus PNG en las tres escalas. Va por HTTP a propósito: el fallo que motivó esta herramienta era que un archivo existía en disco pero el servidor no lo exponía, y eso no se ve desde el sistema de archivos. |
+| `node tools/smoke-test.js` | **Prueba de humo end-to-end.** Abre dos conexiones WebSocket reales, completa el handshake de las dos y recorre el protocolo: centinela `go`, `HELLO`→`WELCOME`, movimiento entre jugadores, chat en ambos sentidos y `DESPAWN` al desconectar. **Arranca el servidor heredado si no está escuchando** y lo deja limpio al salir. |
+| `node tools/check-client.js` | **Verifica que el cliente heredado puede cargar todo lo que pide.** Recorre las dependencias de `define`/`require`/`importScripts` de `client/js` y pide cada destino por HTTP, además de comprobar que cada sprite tiene sus PNG en las tres escalas. Va por HTTP a propósito: el fallo que motivó esta herramienta era que un archivo existía en disco pero el servidor no lo exponía, y eso no se ve desde el sistema de archivos. Arranca el servidor si hace falta. |
 | `node tools/diag-world.js` | Arranca un mundo contra el mapa real y comprueba que quedó inicializado: mapa, rejilla de colisiones, zonas, áreas de mobs, cofres y entidades estáticas. |
 | `node tools/diag-protocol.js` | Conecta un bot y **vuelca todos los frames** que recibe. Distingue los dos caminos de envío del servidor (directo y por cola), que fallan de formas muy distintas. |
 | `node tools/audit-globals.js` | Detecta dependencias de globales implícitas en `server/js`. Ver *Deuda técnica*. |
 | `node tools/test-engine.js` | **Prueba del motor (45 comprobaciones).** Arranca el datapack entero y verifica el contrato completo: `config.js` con sus estructuras anidadas, `items.xml`, `vocations.xml`, la carga de módulos de contenido, las **firmas exactas** de cada tipo de evento, el **despacho** (un handler mueve a un jugador y crea items de verdad), el mapa cargado, la recarga en caliente y el aislamiento del estado. |
-| `node tools/net-test.js` | **Prueba de red de extremo a extremo (25 comprobaciones).** La única del proyecto que **abre un socket de verdad**: motor + servidor WebSocket + cliente real. Comprueba que los mensajes viajen agrupados (859 en un solo marco), que caminar por la red mueva al jugador de verdad en el servidor, que la autoridad cruce la red intacta y que la basura por el socket no tumbe la conexión. Usa el puerto 0: una prueba que falla porque el 8080 estaba ocupado no dice nada del código. |
+| `node tools/test-render.mjs` | **Prueba de la lógica de dibujo del cliente (39 comprobaciones).** El 2.5D no son píxeles: son dos decisiones —cuánto se desplaza cada planta y en qué orden se pinta— y las dos son cálculo puro, así que se verifican **sin abrir un navegador**. Comprueba que una planta por encima se corre abajo-derecha (para que una plataforma tape el suelo que tiene delante), que el suelo se recorre por diagonales, que dentro de un tile el orden es suelo → items de abajo → criaturas → items de arriba, y que **el cliente no se inventa el terreno que no ha recibido**. |
+| `node tools/test-client-e2e.mjs` | **Prueba de extremo a extremo DEL CLIENTE (23 comprobaciones).** Usa **los mismos módulos que carga el navegador** (`world.js`, `camera.js`, `drawlist.js`) contra un servidor de verdad escuchando en un puerto. Es lo que detecta las discrepancias que ninguna prueba por partes puede ver: un campo en la posición equivocada del mensaje, un opcode sin manejar, un orden que no cuadra. Se ejecuta sin navegador porque la lógica del cliente es cálculo puro; lo único que no cubre son las llamadas al lienzo. |
+| `node tools/check-avillatoro-client.js` | Comprueba que el cliente nuevo puede cargar **todos** sus módulos. Los imports usan rutas del montaje del servidor (`/avillatoro/...`, `/shared/...`), y un error de escritura en una de ellas no se ve hasta abrir el navegador, donde aparece como un `Failed to fetch dynamically imported module` que no dice qué archivo falta. Los montajes se leen de `server/config.json`, para que no haya dos verdades. |
+| `node tools/net-test.js` | **Prueba de red de extremo a extremo (26 comprobaciones).** Abre un socket de verdad contra el motor nuevo: comprueba que los mensajes viajen agrupados (859 en un solo marco), que caminar por la red mueva al jugador de verdad en el servidor, que la autoridad cruce la red intacta y que la basura por el socket no tumbe la conexión. Usa el puerto 0: una prueba que falla porque el 8080 estaba ocupado no dice nada del código. |
 | `node tools/test-protocol.js` | **Prueba del protocolo, la vista y las sesiones (57 comprobaciones).** Que el cliente **no pueda saber nada que el motor no le haya mandado**: qué tiles recibe y cuáles no (la superficie no recibe el subsuelo), que se envíen tres plantas y no ocho, que el diff mande solo lo que cambia, y sobre todo que **ningún mensaje del cliente cambie el mundo**: se prueban los 18 opcodes con datos de teletransporte. Se ejecuta sin abrir un socket, con el transporte inyectado. |
 | `node tools/test-combat.js` | **Prueba de combate e IA (65 comprobaciones).** La **fórmula cúbica de experiencia** con sus valores de referencia (nivel 8 = 4.200, nivel 100 = 15.694.800, nivel 200 = 129.389.800), armadura, resistencias e inmunidades elementales, el orden de los eventos de muerte, botín y subida de nivel, búsqueda de caminos con su tope de nodos, e IA: ver, perseguir, atacar y **rodear obstáculos**. Usa azar con semilla, porque una prueba sobre probabilidades con `Math.random` es una moneda al aire. |
 | `node tools/test-simulation.js` | **Prueba de la simulación (53 comprobaciones).** Planificador de eventos (orden, desempate, cancelación, presupuesto), criaturas, movimiento con el **coste de paso real** y sus cooldowns, movimiento bloqueado, esquinas, teletransporte, **spawns y reaparición** tras la muerte, y la limpieza de tiles materializados. Usa un reloj inyectado: una prueba de cooldowns con `Date.now()` real es una carrera contra el reloj. |
@@ -120,8 +144,20 @@ data/            DATAPACK (lo que toca un administrador de servidor)
   scripts/         contenido programado (acciones, movimientos, comandos)
   monsters/        monstruos, como módulos JavaScript
   world/           mapas en el formato interno (JSON, legible en un diff)
-client/js/       cliente (AMD/RequireJS, Canvas 2D, 3 capas de canvas)
-shared/js/       gametypes.js, compartido con el servidor heredado
+client/          EL CLIENTE DEL MOTOR NUEVO
+  avillatoro/
+    index.html       la página: lienzo, login, chat y diagnósticos
+    package.json     marca el directorio como módulos ES para Node
+    js/
+      main.js        ata las piezas: bucle, entrada, cámara que sigue al jugador
+      connection.js  el socket, con reconexión y desempaquetado de marcos
+      world.js       el mundo tal y como lo ve el cliente: SÓLO lo que le llega
+      camera.js      de mundo a píxeles, con el desplazamiento por planta (2.5D)
+      drawlist.js    el orden de dibujo: diagonales y plantas (2.5D)
+      renderer.js    pinta la lista; no decide nada
+      sprites.js     proveedor de sprites intercambiable
+  js/              cliente heredado (AMD/RequireJS) del servidor heredado
+shared/js/       protocol.mjs, EL MISMO archivo para el motor y el navegador
 server/js/       servidor heredado de BrowserQuest
   ws.js            WebSocket (paquete `ws`) + HTTP /status
   staticserver.js  sirve el cliente por HTTP
