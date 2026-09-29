@@ -21,9 +21,10 @@ Requiere **Node.js 20 o superior** (probado en Node 24).
 npm install
 
 npm run engine    # arranca el motor nuevo y resume el datapack cargado
-npm test          # 360 comprobaciones: motor, mundo, simulación, combate, protocolo y cliente
+npm test          # 471 comprobaciones: motor, mundo, simulación, combate, protocolo, persistencia, herramientas y cliente
 
 npm run serve     # arranca el SERVIDOR DE JUEGO del motor nuevo
+npm run editor    # arranca el EDITOR de mapas y objetos
 npm start         # arranca el servidor heredado, que sirve el juego de BrowserQuest
 ```
 
@@ -53,6 +54,33 @@ debajo o mira el suelo.
 
 Para apuntar a otro motor sin tocar el código:
 `.../avillatoro/index.html?ws=otra-maquina:8080`.
+
+### Las herramientas
+
+```bash
+npm run editor    # http://localhost:8090/
+```
+
+Dos pestañas: **Mapas** y **Objetos**.
+
+En el mapa, se elige uno de `data/world`, se navega con el ratón (el botón central o
+Mayús+derecho arrastra), se cambia de planta con la rueda, se pinta con el izquierdo y
+se borra con el derecho. Con Mayús se **añade** al montón en vez de sustituirlo, que es
+lo que hace falta para poner una moneda encima de una mesa. El botón Guardar escribe
+el archivo.
+
+En los objetos se edita `items.xml`: se cambian sus propiedades, se crean y se borran.
+**Los comentarios y el orden del archivo se conservan**, porque se edita el texto en
+vez de reescribirlo entero; si no, guardar un objeto haría un diff de todo el archivo y
+nadie se atrevería a guardar.
+
+El editor **reutiliza la cámara y el orden de dibujo del cliente**. No tiene su propio
+renderer a propósito: si lo tuviera, los dos acabarían discrepando, y un mapa que se ve
+bien en el editor y mal en el juego es un fallo que cuesta horas entender porque cada
+mitad parece correcta.
+
+Escucha **sólo en localhost** y no lleva autenticación, porque escribe en el datapack.
+Para exponerlo habría que ponerle autenticación primero.
 
 ### El juego heredado
 
@@ -97,10 +125,11 @@ Todas se ejecutan con el servidor levantado (salvo `diag-world` y `audit-globals
 | `node tools/diag-protocol.js` | Conecta un bot y **vuelca todos los frames** que recibe. Distingue los dos caminos de envío del servidor (directo y por cola), que fallan de formas muy distintas. |
 | `node tools/audit-globals.js` | Detecta dependencias de globales implícitas en `server/js`. Ver *Deuda técnica*. |
 | `node tools/test-engine.js` | **Prueba del motor (45 comprobaciones).** Arranca el datapack entero y verifica el contrato completo: `config.js` con sus estructuras anidadas, `items.xml`, `vocations.xml`, la carga de módulos de contenido, las **firmas exactas** de cada tipo de evento, el **despacho** (un handler mueve a un jugador y crea items de verdad), el mapa cargado, la recarga en caliente y el aislamiento del estado. |
-| `node tools/test-persistence.js` | **Prueba de la persistencia (49 comprobaciones).** Que las claves ajenas estén **activas** (SQLite las trae apagadas), que dos cuentas con la misma contraseña tengan hashes distintos, que la contraseña **no esté en la base en claro**, que un guardado que falla a medias se deshaga entero, que un servidor que se cayó no deje a nadie marcado como «dentro» para siempre, y que el estado sobreviva a **reiniciar el motor**, no solo a un `save`. |
+| `node tools/test-tools.js` | **Prueba de las herramientas (60 comprobaciones).** Que el escritor de mapas no materialice el mapa al guardarlo (28 tiles explícitos siguen siendo 28 y no 65.536), que la ida y vuelta cargar→escribir→cargar no pierda nada, que editar `items.xml` **conserve los comentarios y el orden** del archivo, y que el API rechace lo que no debe (items inexistentes, banderas inventadas, nombres de mapa con barras) **sin dejar el archivo a medias**. Todo sobre copias: una prueba que escribiera en `data/` convertiría un fallo suyo en un mapa roto. |
+| `node tools/test-persistence.js` | **Prueba de la persistencia (51 comprobaciones).** Que las claves ajenas estén **activas** (SQLite las trae apagadas), que dos cuentas con la misma contraseña tengan hashes distintos, que la contraseña **no esté en la base en claro**, que un guardado que falla a medias se deshaga entero, que un servidor que se cayó no deje a nadie marcado como «dentro» para siempre, y que el estado sobreviva a **reiniciar el motor**, no solo a un `save`. |
 | `node tools/test-render.mjs` | **Prueba de la lógica de dibujo del cliente (39 comprobaciones).** El 2.5D no son píxeles: son dos decisiones —cuánto se desplaza cada planta y en qué orden se pinta— y las dos son cálculo puro, así que se verifican **sin abrir un navegador**. Comprueba que una planta por encima se corre abajo-derecha (para que una plataforma tape el suelo que tiene delante), que el suelo se recorre por diagonales, que dentro de un tile el orden es suelo → items de abajo → criaturas → items de arriba, y que **el cliente no se inventa el terreno que no ha recibido**. |
 | `node tools/test-client-e2e.mjs` | **Prueba de extremo a extremo DEL CLIENTE (23 comprobaciones).** Usa **los mismos módulos que carga el navegador** (`world.js`, `camera.js`, `drawlist.js`) contra un servidor de verdad escuchando en un puerto. Es lo que detecta las discrepancias que ninguna prueba por partes puede ver: un campo en la posición equivocada del mensaje, un opcode sin manejar, un orden que no cuadra. Se ejecuta sin navegador porque la lógica del cliente es cálculo puro; lo único que no cubre son las llamadas al lienzo. |
-| `node tools/check-avillatoro-client.js` | Comprueba que el cliente nuevo puede cargar **todos** sus módulos. Los imports usan rutas del montaje del servidor (`/avillatoro/...`, `/shared/...`), y un error de escritura en una de ellas no se ve hasta abrir el navegador, donde aparece como un `Failed to fetch dynamically imported module` que no dice qué archivo falta. Los montajes se leen de `server/config.json`, para que no haya dos verdades. |
+| `node tools/check-avillatoro-client.js` | Comprueba que el cliente y el editor pueden cargar **todos** sus módulos. Los imports usan rutas del montaje del servidor (`/avillatoro/...`, `/shared/...`, `/js/...`), y un error de escritura en una de ellas no se ve hasta abrir el navegador, donde aparece como un `Failed to fetch dynamically imported module` que no dice qué archivo falta. Comprueba además que los montajes declarados **cuadran con los de los dos servidores**, leyéndolos de su código. |
 | `node tools/net-test.js` | **Prueba de red de extremo a extremo (26 comprobaciones).** Abre un socket de verdad contra el motor nuevo: comprueba que los mensajes viajen agrupados (859 en un solo marco), que caminar por la red mueva al jugador de verdad en el servidor, que la autoridad cruce la red intacta y que la basura por el socket no tumbe la conexión. Usa el puerto 0: una prueba que falla porque el 8080 estaba ocupado no dice nada del código. |
 | `node tools/test-protocol.js` | **Prueba del protocolo, la vista y las sesiones (57 comprobaciones).** Que el cliente **no pueda saber nada que el motor no le haya mandado**: qué tiles recibe y cuáles no (la superficie no recibe el subsuelo), que se envíen tres plantas y no ocho, que el diff mande solo lo que cambia, y sobre todo que **ningún mensaje del cliente cambie el mundo**: se prueban los 18 opcodes con datos de teletransporte. Se ejecuta sin abrir un socket, con el transporte inyectado. |
 | `node tools/test-combat.js` | **Prueba de combate e IA (65 comprobaciones).** La **fórmula cúbica de experiencia** con sus valores de referencia (nivel 8 = 4.200, nivel 100 = 15.694.800, nivel 200 = 129.389.800), armadura, resistencias e inmunidades elementales, el orden de los eventos de muerte, botín y subida de nivel, búsqueda de caminos con su tope de nodos, e IA: ver, perseguir, atacar y **rodear obstáculos**. Usa azar con semilla, porque una prueba sobre probabilidades con `Math.random` es una moneda al aire. |
@@ -125,6 +154,17 @@ El plan de migración y la justificación de cada decisión están en
 
 ```
 config.js        configuración del motor (un módulo que exporta un objeto)
+editor/          LAS HERRAMIENTAS
+  server.js         el servidor de herramientas: sirve el editor y su API
+  index.html        el editor, con dos pestañas: mapas y objetos
+  js/
+    main.js          ata las dos herramientas
+    editormap.js     el mapa que se edita, y adaptador para el orden de dibujo
+    mapcanvas.js     el lienzo: REUTILIZA la cámara y el dibujo del cliente
+    itemsview.js     lista y formulario de items.xml
+    apiclient.js     el cliente del API
+  lib/
+    itemsfile.js     edición quirúrgica de items.xml, conservando el resto
 engine/          MOTOR NUEVO
   core/            arranque, carga de config, logger, planificador de eventos
   scripting/       registro de contenido, cargador, envoltorios y API Game

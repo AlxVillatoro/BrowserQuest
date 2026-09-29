@@ -1,0 +1,1 @@
+{ "//": "Marca SOLO esta carpeta como modulos ES. El servidor de herramientas (editor/server.js) esta en CommonJS al lado, y poner la marca en editor/ lo romperia.", "type": "module", "private": true }

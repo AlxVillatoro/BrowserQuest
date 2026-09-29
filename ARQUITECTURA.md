@@ -128,7 +128,8 @@ falta tocar el motor para añadir un hechizo, la arquitectura está mal.
 | Predicción en el cliente | pendiente |
 | Persistencia: cuentas, personajes, items, storages | hecho y probado |
 | Guardado periódico y al apagar | hecho y probado |
-| Herramientas de mapas e items | pendiente |
+| Herramientas de mapas e items | hecho y probado |
+| Escritor de mapas, con ida y vuelta | hecho y probado |
 | Outfits | pendiente |
 | Importadores OTBM/OTB/DAT/SPR | pendiente |
 
@@ -581,9 +582,33 @@ Lo que falta: la web de creación de cuentas (hoy se crean solas, que es cómodo
 desarrollo e inseguro en producción), las casas y los gremios, y el registro de
 muertes.
 
-**Fase 8 — Herramientas.** Importador/exportador OTBM, `otb2json`, `spr`→atlas, y
-un editor de mapas que reutilice la cámara y el orden de dibujo del cliente. Sólo lo
-que no cubran las herramientas MIT.
+**Fase 8 — Herramientas.** *Hecha la parte propia.* Editor de mapas y de objetos, con
+escritor de mapas y edición quirúrgica de `items.xml`.
+
+**Primero hizo falta el ESCRITOR**, y es la pieza que no se ve: sin él, un editor podría
+leer un mapa y pintarlo pero no guardarlo, y el formato sería de un solo sentido. El
+escritor es más difícil que el lector por una razón concreta: al leer, lo que falta se
+supone; al escribir, hay que decidir qué se OMITE. La regla es que sólo se escribe lo
+que difiere del valor por defecto, y por eso la prueba es de ida y vuelta: cargar,
+escribir, volver a cargar y comprobar que son idénticos. Es la única forma de saber que
+lo que se omite es exactamente lo que el lector sabe reconstruir.
+
+Y si el escritor volcara todos los tiles, el archivo pasaría de 2 KB a 67 millones de
+celdas en la primera edición: el almacenamiento disperso del motor se perdería justo al
+guardar.
+
+**`items.xml` se edita quirúrgicamente**, sobre el texto, no reescribiéndolo desde el
+modelo. Reanalizarlo y volcarlo borraría los comentarios, reordenaría los bloques y
+cambiaría el formato de cada línea, así que guardar un objeto haría un diff de todo el
+archivo. Un formato cuyo diff da miedo es un formato que nadie mantiene.
+
+**El editor no tiene renderer propio**: importa la cámara y el orden de dibujo del
+cliente. Si tuviera los suyos, acabarían discrepando, y un mapa que se ve bien en el
+editor y mal en el juego cuesta horas porque cada mitad parece correcta.
+
+Lo que falta: el importador y exportador de OTBM (para hablar con Remere's y con los
+mapas de Tibia), `otb2json` y el atlas de `.spr`. Sólo lo que no cubran las herramientas
+MIT.
 
 **Fase 9 — Render 2.5D.** Hecho lo estructural (desplazamiento y orden). Falta la
 altura de sprite por item, las sombras proyectadas de verdad y el atlas.

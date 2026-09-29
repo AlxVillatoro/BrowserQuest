@@ -321,6 +321,50 @@ class GameMap {
     // -----------------------------------------------------------------------
 
     /**
+     * Quita un tile del mapa, devolviéndolo al estado disperso.
+     *
+     * Es lo que hace falta para BORRAR: al quitar un muro desde un editor, el tile
+     * tiene que volver a ser suelo por defecto y no un tile vacío. La diferencia
+     * importa: un tile vacío es una celda que existe y no tiene suelo, o sea un
+     * agujero por el que no se puede caminar; suelo por defecto es una celda normal.
+     *
+     * @returns {boolean} si había algo que quitar
+     */
+    removeTile(x, y, z) {
+        if (!this.inBounds(x, y, z)) {
+            return false;
+        }
+
+        const chunkKey = this._chunkKey(
+            Math.floor(x / CHUNK_SIZE), Math.floor(y / CHUNK_SIZE), z);
+        const chunk = this.chunks.get(chunkKey);
+        if (!chunk) {
+            return false;
+        }
+
+        const index = (y % CHUNK_SIZE) * CHUNK_SIZE + (x % CHUNK_SIZE);
+        if (!chunk[index]) {
+            return false;
+        }
+
+        // Un tile con criaturas no se puede quitar sin dejarlas en el aire.
+        if (chunk[index].creatures.length > 0) {
+            return false;
+        }
+
+        chunk[index] = null;
+        this.explicitTiles -= 1;
+
+        // Si el chunk se queda sin nada vivo se elimina entero, para que la tabla de
+        // chunks tampoco crezca.
+        if (chunk.every((entry) => entry === null)) {
+            this.chunks.delete(chunkKey);
+        }
+
+        return true;
+    }
+
+    /**
      * Devuelve al estado disperso los tiles que quedaron vacíos.
      *
      * Es necesario porque crear una criatura materializa su tile: un jugador que

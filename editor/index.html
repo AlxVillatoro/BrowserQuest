@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Avillatoro — herramientas</title>
+<style>
+    /*
+     * El editor es una herramienta, no un juego: la interfaz va en gris y sin
+     * adornos, y todo el color está en el lienzo. Un editor con interfaz llamativa
+     * compite con lo que se está editando.
+     */
+    * { box-sizing: border-box; }
+
+    html, body {
+        margin: 0;
+        height: 100%;
+        background: #0a0a0e;
+        color: #d0d0dc;
+        font: 13px/1.5 ui-monospace, "Cascadia Mono", Consolas, monospace;
+        overflow: hidden;
+    }
+
+    #app { display: flex; flex-direction: column; height: 100%; }
+
+    header {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        padding: 8px 12px;
+        background: #12121a;
+        border-bottom: 1px solid #22222e;
+    }
+
+    header h1 { margin: 0; font-size: 14px; letter-spacing: 0.5px; color: #e8e8f0; }
+
+    .tabs { display: flex; gap: 4px; }
+
+    .tab {
+        padding: 5px 14px;
+        background: #1a1a24;
+        border: 1px solid #26263a;
+        border-radius: 4px;
+        color: #9090a0;
+        font: inherit;
+        cursor: pointer;
+    }
+    .tab.active { background: #2a3a56; border-color: #3a5a86; color: #e8e8f0; }
+
+    #global-status { margin-left: auto; color: #6a7a6a; font-size: 11px; }
+    #global-status.error { color: #e08080; }
+
+    .panel { display: none; flex: 1; min-height: 0; }
+    .panel.active { display: flex; }
+
+    /* --- Editor de mapas --- */
+
+    #map-side {
+        width: 260px;
+        flex: 0 0 260px;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        padding: 10px;
+        background: #0e0e14;
+        border-right: 1px solid #1e1e2a;
+        overflow-y: auto;
+    }
+
+    #map-main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+
+    #map-canvas { flex: 1; display: block; width: 100%; height: 100%; cursor: crosshair; }
+
+    .row { display: flex; gap: 6px; align-items: center; }
+
+    select, input[type=text], input[type=number] {
+        background: #08080c;
+        border: 1px solid #26263a;
+        border-radius: 3px;
+        color: #d0d0dc;
+        font: inherit;
+        padding: 4px 6px;
+        min-width: 0;
+        width: 100%;
+    }
+
+    button {
+        padding: 5px 10px;
+        background: #26364a;
+        border: 1px solid #34506e;
+        border-radius: 3px;
+        color: #d8e4f0;
+        font: inherit;
+        cursor: pointer;
+        white-space: nowrap;
+    }
+    button:hover { background: #2f4460; }
+    button.active { background: #3a6a9a; border-color: #4a8ac0; color: #fff; }
+    button.plain { background: #1a1a24; border-color: #2a2a3a; color: #a0a0b0; }
+    button.danger { background: #4a2020; border-color: #6a3030; color: #f0c0c0; }
+    button:disabled { opacity: 0.45; cursor: not-allowed; }
+
+    .section-title {
+        margin: 10px 0 6px;
+        color: #7a7a90;
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+    }
+
+    #palette { display: flex; flex-direction: column; gap: 2px; }
+    .palette-title {
+        margin: 10px 0 4px;
+        color: #7a7a90;
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+    }
+
+    .palette-item {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        width: 100%;
+        padding: 4px 6px;
+        background: #12121a;
+        border: 1px solid #1e1e2a;
+        border-radius: 3px;
+        color: #c0c0d0;
+        text-align: left;
+        font-size: 12px;
+    }
+    .palette-item.selected { background: #2a3a56; border-color: #3a5a86; color: #fff; }
+    .palette-item em { margin-left: auto; color: #6a6a80; font-style: normal; font-size: 10px; }
+
+    .swatch {
+        display: inline-block;
+        width: 14px;
+        height: 14px;
+        border-radius: 2px;
+        background: linear-gradient(135deg, #4a7c3f, #8b7355);
+        flex: 0 0 auto;
+    }
+
+    footer {
+        display: flex;
+        gap: 12px;
+        padding: 4px 12px;
+        background: #08080c;
+        border-top: 1px solid #1a1a24;
+        font-size: 11px;
+        color: #6a6a80;
+        white-space: nowrap;
+        overflow: hidden;
+    }
+    footer .error { color: #e08080; }
+
+    /* --- Editor de objetos --- */
+
+    #items-list-pane {
+        width: 320px;
+        flex: 0 0 320px;
+        display: flex;
+        flex-direction: column;
+        border-right: 1px solid #1e1e2a;
+        background: #0e0e14;
+    }
+
+    #item-filter { margin: 8px; width: auto; }
+
+    #item-list { flex: 1; overflow-y: auto; }
+
+    .item-row {
+        display: flex;
+        gap: 8px;
+        padding: 4px 10px;
+        border-bottom: 1px solid #14141c;
+        cursor: pointer;
+        font-size: 12px;
+    }
+    .item-row:hover { background: #14141e; }
+    .item-row.selected { background: #2a3a56; }
+    .item-id { color: #6a9ad0; min-width: 62px; }
+    .item-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .item-attrs { color: #6a6a80; font-size: 10px; }
+
+    #item-form {
+        flex: 1;
+        overflow-y: auto;
+        padding: 12px 16px;
+        max-width: 640px;
+    }
+
+    .field { display: block; margin-bottom: 10px; }
+    .field span { display: block; margin-bottom: 3px; color: #8a8a9a; font-size: 11px; }
+
+    .attribute-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 3px 0;
+        font-size: 12px;
+    }
+    .attribute-row input[type=checkbox] { width: auto; }
+    .attribute-row input[type=number], .attribute-row input[type=text] { width: 90px; flex: 0 0 90px; }
+    .attribute-row span { min-width: 150px; color: #b0b0c0; }
+    .attribute-row em { color: #66667a; font-style: normal; font-size: 11px; }
+    .attribute-row.readonly em { color: #8a8a6a; }
+
+    .actions { display: flex; gap: 8px; margin-top: 18px; }
+
+    #items-status { padding: 6px 12px; font-size: 11px; color: #6a7a6a; }
+    #items-status.error { color: #e08080; }
+</style>
+</head>
+<body>
+<div id="app">
+
+    <header>
+        <h1>Avillatoro · herramientas</h1>
+        <div class="tabs">
+            <button class="tab active" data-tab="map">Mapas</button>
+            <button class="tab" data-tab="items">Objetos</button>
+        </div>
+        <div id="global-status">cargando...</div>
+    </header>
+
+    <!-- ================= Editor de mapas ================= -->
+    <div class="panel active" id="panel-map">
+
+        <aside id="map-side">
+            <div>
+                <div class="section-title">Mapa</div>
+                <select id="map-select"></select>
+            </div>
+
+            <div class="row">
+                <button type="button" id="btn-reload" class="plain">Recargar</button>
+                <button type="button" id="btn-save">Guardar</button>
+            </div>
+
+            <div>
+                <div class="section-title">Planta</div>
+                <select id="floor-select"></select>
+            </div>
+
+            <div>
+                <div class="section-title">Herramientas</div>
+                <div class="row">
+                    <button type="button" id="btn-erase" class="plain">Borrar</button>
+                    <button type="button" id="btn-flag" class="plain">Bandera</button>
+                </div>
+                <select id="flag-select" style="margin-top:6px">
+                    <option value="protectionZone">protectionZone — zona de protección</option>
+                    <option value="noPvp">noPvp — sin combate entre jugadores</option>
+                    <option value="noLogout">noLogout — no se puede salir aquí</option>
+                    <option value="pvpZone">pvpZone — zona de combate</option>
+                    <option value="house">house — casa</option>
+                </select>
+            </div>
+
+            <div>
+                <div class="section-title">Paleta</div>
+                <div id="palette"></div>
+            </div>
+        </aside>
+
+        <div id="map-main">
+            <canvas id="map-canvas"></canvas>
+            <footer>
+                <span id="map-stats">—</span>
+                <span id="map-status">—</span>
+            </footer>
+        </div>
+    </div>
+
+    <!-- ================= Editor de objetos ================= -->
+    <div class="panel" id="panel-items">
+
+        <div id="items-list-pane">
+            <input id="item-filter" type="text" placeholder="filtrar por id o nombre...">
+            <div id="item-list"></div>
+            <div id="items-status">—</div>
+        </div>
+
+        <div id="item-form"></div>
+    </div>
+</div>
+
+<!--
+    Módulos ES, y con las rutas del MONTAJE del servidor de herramientas: `/avillatoro/`
+    es el cliente del juego, del que el editor reutiliza la cámara y el orden de
+    dibujo. Por eso el editor no tiene su propio renderer y no puede discrepar del
+    juego.
+-->
+<script type="module" src="/js/main.js"></script>
+</body>
+</html>

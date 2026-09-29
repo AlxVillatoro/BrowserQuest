@@ -20,46 +20,94 @@ const fs = require('fs');
 const path = require('path');
 
 const ROOT = path.resolve(__dirname, '..');
-const ENTRY = 'client/avillatoro/index.html';
 
 /**
- * Los montajes del servidor estático, leídos de SU configuración.
+ * Las aplicaciones de navegador que hay que comprobar.
  *
- * Es importante leerlos y no volver a escribirlos aquí: si el servidor monta
- * `client/` en la raíz y `shared/` en `/shared`, este comprobador tiene que saber
- * exactamente lo mismo. Con dos copias, cambiar el montaje dejaría al comprobador
- * diciendo que todo está bien mientras el navegador recibe 404.
+ * Son DOS y cada una con sus montajes, porque cada una la sirve un servidor distinto:
+ * el cliente lo sirve el servidor de juego y el editor lo sirve el servidor de
+ * herramientas. Las dos comparten `/shared/` y el editor además monta el cliente
+ * porque REUTILIZA su cámara y su orden de dibujo.
  */
-function loadMounts() {
-    const configPath = path.join(ROOT, 'server', 'config.json');
+const APPS = [
+    {
+        name: 'cliente',
+        entry: 'client/avillatoro/index.html',
+        mounts: [
+            { prefix: '/shared/', dir: 'shared' },
+            { prefix: '/', dir: 'client' }
+        ]
+    },
+    {
+        name: 'editor',
+        entry: 'editor/index.html',
+        mounts: [
+            { prefix: '/avillatoro/', dir: 'client/avillatoro' },
+            { prefix: '/shared/', dir: 'shared' },
+            { prefix: '/', dir: 'editor' }
+        ]
+    }
+];
 
-    let config = {};
+/**
+ * Comprueba que los montajes declarados aquí coinciden con los del servidor.
+ *
+ * Es la parte que evita que este comprobador se desincronice: si alguien cambia el
+ * montaje del servidor y no el de aquí, el comprobador diría que todo está bien
+ * mientras el navegador recibe 404. Se comprueba leyendo la configuración de verdad.
+ */
+function verifyAgainstServers() {
+    const problems = [];
+
+    const configPath = path.join(ROOT, 'server', 'config.json');
     try {
-        config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+        const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+        const clientRoot = (config.client_root || './client').replace(/^\.\//, '');
+        const sharedRoot = (config.shared_root || './shared').replace(/^\.\//, '');
+
+        const clientMounts = APPS[0].mounts;
+        if (clientMounts[1].dir !== clientRoot) {
+            problems.push('el cliente monta "' + clientMounts[1].dir +
+                '" pero server/config.json dice "' + clientRoot + '"');
+        }
+        if (clientMounts[0].dir !== sharedRoot) {
+            problems.push('el cliente monta "' + clientMounts[0].dir +
+                '" en /shared pero server/config.json dice "' + sharedRoot + '"');
+        }
     } catch (error) {
-        console.error('  FALLO  no se pudo leer ' + configPath + ': ' + error.message);
-        process.exit(1);
+        problems.push('no se pudo leer server/config.json: ' + error.message);
     }
 
-    const clientRoot = (config.client_root || './client').replace(/^\.\//, '');
-    const sharedRoot = (config.shared_root || './shared').replace(/^\.\//, '');
+    // Los montajes del editor se leen de su propio servidor.
+    try {
+        const { MOUNTS } = require('../editor/server');
+        const editorMounts = APPS[1].mounts;
 
-    return [
-        // El orden importa: la primera coincidencia gana.
-        { prefix: '/shared/', dir: sharedRoot },
-        { prefix: '/', dir: clientRoot }
-    ];
+        MOUNTS.forEach((mount, index) => {
+            const declared = editorMounts[index];
+            if (!declared) {
+                problems.push('el editor monta ' + mount.prefix + ' y aqui no esta declarado');
+                return;
+            }
+            if (declared.prefix !== mount.prefix) {
+                problems.push('el editor monta ' + mount.prefix + ' en la posicion ' + index +
+                    ' y aqui esta ' + declared.prefix);
+            }
+        });
+    } catch (error) {
+        problems.push('no se pudo leer los montajes del editor: ' + error.message);
+    }
+
+    return problems;
 }
 
-const MOUNTS = loadMounts();
-
-/** A qué archivo del disco corresponde una ruta absoluta del navegador. */
-function resolveWebPath(webPath) {
+/** A qué archivo del disco corresponde una ruta absoluta, para una app. */
+function resolveWebPathFor(app, webPath) {
     if (!webPath.startsWith('/')) {
         return path.join(ROOT, webPath);
     }
 
-    for (const mount of MOUNTS) {
+    for (const mount of app.mounts) {
         if (webPath.startsWith(mount.prefix)) {
             const rest = webPath.slice(mount.prefix.length);
             return path.normalize(path.join(ROOT, mount.dir, rest));
@@ -70,9 +118,9 @@ function resolveWebPath(webPath) {
 }
 
 /** Resuelve un import relativo o absoluto desde el archivo que lo hace. */
-function resolveImport(fromFile, spec) {
+function resolveImport(app, fromFile, spec) {
     if (spec.startsWith('/')) {
-        const resolved = resolveWebPath(spec);
+        const resolved = resolveWebPathFor(app, spec);
         return resolved === null ? null : path.normalize(resolved);
     }
     if (spec.startsWith('.')) {
@@ -113,67 +161,73 @@ function extractHtmlModules(source) {
     return found;
 }
 
-function main() {
-    console.log('Comprobacion de los modulos del cliente nuevo\n');
 
-    const entryPath = path.join(ROOT, ENTRY);
+/**
+ * Recorre el grafo de imports de una aplicación.
+ *
+ * Devuelve lo que ha visitado y lo que falta, para poder informar de las DOS
+ * aplicaciones juntas: si el cliente está bien y el editor mal, el resumen tiene que
+ * decirlo, no parar en el primero.
+ */
+function checkApp(app) {
+    const entryPath = path.join(ROOT, app.entry);
+    const result = { modules: 0, visited: new Set(), missing: [], broken: [] };
+
     if (!fs.existsSync(entryPath)) {
-        console.error('  FALLO  no existe ' + ENTRY);
-        process.exit(1);
+        result.missing.push({ spec: app.entry, from: '(el punto de entrada)', file: entryPath });
+        return result;
     }
 
-    const queue = [];
-    const visited = new Set();
-    const missing = [];
-    const broken = [];
-
-    extractHtmlModules(fs.readFileSync(entryPath, 'utf8')).forEach((src) => {
-        queue.push({ file: resolveWebPath(src), from: ENTRY, spec: src });
-    });
-
-    // El HTML también enlaza la hoja de estilos y el propio punto de entrada; aquí
-    // sólo interesan los módulos, que son los que pueden faltar en silencio.
-    let modules = 0;
+    const queue = extractHtmlModules(fs.readFileSync(entryPath, 'utf8')).map((src) => ({
+        file: resolveWebPathFor(app, src),
+        from: app.entry,
+        spec: src
+    }));
 
     while (queue.length > 0) {
         const item = queue.shift();
-        const key = item.file;
 
-        if (visited.has(key)) {
+        if (result.visited.has(item.file)) {
             continue;
         }
-        visited.add(key);
+        result.visited.add(item.file);
 
-        if (!fs.existsSync(item.file)) {
-            missing.push(item);
+        if (!item.file || !fs.existsSync(item.file)) {
+            result.missing.push(item);
             continue;
         }
 
         const source = fs.readFileSync(item.file, 'utf8');
-        modules += 1;
+        result.modules += 1;
 
-        // Un módulo ES que no parsea rompe el cliente entero. Se comprueba aquí
-        // porque el error del navegador no dice en qué archivo está.
+        // Un modulo ES que no parsea rompe la aplicacion entera, y el error del
+        // navegador no dice en que archivo esta. `new Function` no admite `import`,
+        // asi que la comprobacion es que el error que lanza hable de import o export.
         try {
-            new (require('vm').SourceTextModule || Object)(source);
+            // eslint-disable-next-line no-new-func
+            new Function(source);
         } catch (error) {
-            // `vm.SourceTextModule` necesita un flag; si no está, se usa una
-            // comprobación de sintaxis más básica.
-            try {
-                // eslint-disable-next-line no-new-func
-                new Function('import', source);
-            } catch (inner) {
-                if (/import|export/.test(inner.message)) {
-                    broken.push({ file: item.file, error: inner.message });
+            if (/import|export/.test(error.message)) {
+                // Puede ser sintaxis ES legitima o un error de verdad; se distingue
+                // buscando un desequilibrio evidente de llaves.
+                const abre = (source.match(/\{/g) || []).length;
+                const cierra = (source.match(/\}/g) || []).length;
+                if (abre !== cierra) {
+                    result.broken.push({
+                        file: item.file,
+                        error: 'las llaves no cuadran (' + abre + ' abren, ' + cierra + ' cierran)'
+                    });
                 }
+            } else {
+                result.broken.push({ file: item.file, error: error.message });
             }
         }
 
         extractImports(source).forEach((spec) => {
-            const resolved = resolveImport(item.file, spec);
+            const resolved = resolveImport(app, item.file, spec);
 
             if (resolved === null) {
-                missing.push({
+                result.missing.push({
                     file: item.file,
                     from: path.relative(ROOT, item.file),
                     spec: spec,
@@ -182,48 +236,69 @@ function main() {
                 return;
             }
 
-            queue.push({
-                file: resolved,
-                from: path.relative(ROOT, item.file),
-                spec: spec
-            });
+            queue.push({ file: resolved, from: path.relative(ROOT, item.file), spec: spec });
         });
     }
+
+    return result;
+}
+
+function main() {
+    console.log('Comprobacion de los modulos de las aplicaciones de navegador\n');
 
     const relative = (file) => path.relative(ROOT, file).replace(/\\/g, '/');
+    const problems = verifyAgainstServers();
 
-    visited.forEach((file) => {
-        if (fs.existsSync(file)) {
-            console.log('  ok     ' + relative(file));
+    let totalModules = 0;
+    let totalMissing = 0;
+    let totalBroken = 0;
+
+    APPS.forEach((app) => {
+        const result = checkApp(app);
+
+        console.log('  --- ' + app.name + ' (' + app.entry + ') ---');
+        result.visited.forEach((file) => {
+            if (fs.existsSync(file)) {
+                console.log('  ok     ' + relative(file));
+            }
+        });
+
+        if (result.missing.length > 0) {
+            console.log('  FALTAN ' + result.missing.length + ' archivo(s):');
+            result.missing.forEach((item) => {
+                console.log('    ' + item.spec + '  (importado desde ' + item.from + ')');
+                console.log('      -> ' + (item.reason || relative(item.file)));
+            });
         }
+        if (result.broken.length > 0) {
+            console.log('  NO PARSEAN ' + result.broken.length + ' modulo(s):');
+            result.broken.forEach((item) => {
+                console.log('    ' + relative(item.file) + ': ' + item.error);
+            });
+        }
+
+        console.log('  ' + result.modules + ' modulos, ' + result.visited.size +
+            ' archivos visitados\n');
+
+        totalModules += result.modules;
+        totalMissing += result.missing.length;
+        totalBroken += result.broken.length;
     });
 
-    console.log('');
-
-    if (missing.length > 0) {
-        console.log('  FALTAN ' + missing.length + ' archivo(s):');
-        missing.forEach((item) => {
-            console.log('    ' + item.spec + '  (importado desde ' + item.from + ')');
-            console.log('      -> ' + (item.reason || relative(item.file)));
-        });
+    if (problems.length > 0) {
+        console.log('  LOS MONTAJES NO CUADRAN CON LOS SERVIDORES:');
+        problems.forEach((problem) => console.log('    ' + problem));
+        console.log('');
     }
 
-    if (broken.length > 0) {
-        console.log('  NO PARSEAN ' + broken.length + ' modulo(s):');
-        broken.forEach((item) => {
-            console.log('    ' + relative(item.file) + ': ' + item.error);
-        });
-    }
+    console.log('  TOTAL: ' + totalModules + ' modulos en ' + APPS.length + ' aplicaciones');
 
-    console.log('');
-    console.log('  ' + modules + ' modulos, ' + visited.size + ' archivos visitados');
-
-    if (missing.length === 0 && broken.length === 0) {
-        console.log('\n\u001b[32mTodo OK\u001b[0m — el cliente puede cargar todo lo que importa.');
+    if (totalMissing === 0 && totalBroken === 0 && problems.length === 0) {
+        console.log('\n\u001b[32mTodo OK\u001b[0m — el cliente y el editor pueden cargar todo lo que importan.');
         process.exit(0);
     }
 
-    console.log('\n\u001b[31mEl cliente no cargaria.\u001b[0m');
+    console.log('\n\u001b[31mAlguna aplicacion no cargaria.\u001b[0m');
     process.exit(1);
 }
 
