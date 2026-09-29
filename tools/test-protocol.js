@@ -209,10 +209,17 @@ function main() {
         tiles === 19 * 15 * 3,
         '19x15 tiles por planta, sin excluir el que pisa el jugador: ' + tiles);
 
+    // Se comprueba que el jugador ESTA entre las criaturas, no que sea la unica.
+    //
+    // El motor coloca los monstruos con `Math.random`, asi que la rata del punto de
+    // aparicion cae a veces dentro de la vista del jugador y a veces no. Una
+    // comprobacion que exija "exactamente una criatura" pasa casi siempre y falla de
+    // vez en cuando, que es la peor clase de prueba: la que ensena a desconfiar de
+    // los fallos.
     check('el cliente se recibe a si mismo como criatura',
-        count(login, P.SERVER.CREATURE_ADD) === 1 &&
-        first(login, P.SERVER.CREATURE_ADD)[1] === session.playerId,
-        'necesita saber que existe para dibujarse');
+        login.some((m) => m[0] === P.SERVER.CREATURE_ADD && m[1] === session.playerId),
+        count(login, P.SERVER.CREATURE_ADD) + ' criatura(s) al entrar, y una es el ' +
+        'propio jugador: necesita saber que existe para dibujarse');
 
     // =======================================================================
     section('4. El diff: se envia lo que cambia, no todo');
@@ -395,8 +402,9 @@ function main() {
 
         const adds = sent.filter((m) => m[0] === P.SERVER.CREATURE_ADD);
         check('el primero ve aparecer al segundo',
-            adds.length === 1 && adds[0][1] === sessionB.playerId,
-            'a 2 casillas de distancia');
+            adds.some((m) => m[1] === sessionB.playerId),
+            'a 2 casillas de distancia; ' + adds.length + ' criatura(s) aparecieron ' +
+            '(el motor coloca los monstruos al azar, asi que puede haber mas)');
 
         // El segundo se mueve y el primero lo ve moverse, con su duracion.
         sent.length = 0;
