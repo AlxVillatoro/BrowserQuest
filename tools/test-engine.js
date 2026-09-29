@@ -86,8 +86,8 @@ function main() {
     section('2. items.xml');
     // -----------------------------------------------------------------------
 
-    check('se cargan los items', world.itemTypes.size === 11,
-        world.itemTypes.size + ' items (6 explicitos + 5 del rango 1950-1954)');
+    check('se cargan los items', world.itemTypes.size === 18,
+        world.itemTypes.size + ' items (13 explicitos + 5 del rango 1950-1954)');
 
     const sword = world.itemTypes.get(2400);
     check('nombre y atributos de un item',
@@ -305,7 +305,40 @@ function main() {
         engine.dispatchAction(1948, { playerId: player.id }).handled === true);
 
     // -----------------------------------------------------------------------
-    section('9. Aislamiento');
+    section('9. Mapa cargado por el motor');
+    // -----------------------------------------------------------------------
+
+    const map = world.map;
+    check('el motor carga el mapa al arrancar', !!map, map ? map.name : 'no hay mapa');
+
+    check('el mapa conoce su tamano',
+        map.width === 64 && map.height === 64 && map.floors === 16,
+        map.stats().size);
+
+    check('el suelo por defecto es distinto por planta',
+        map.getGround(50, 50, 7).getName() === 'grass' &&
+        map.getGround(50, 50, 8).getName() === 'stone floor',
+        'planta 7 = hierba, planta 8 = piedra');
+
+    check('Game consulta el mapa a traves de la API',
+        globalThis.Game.isWalkable(40, 40, 7) === true &&
+        globalThis.Game.isWalkable(10, 10, 7) === false,
+        'hierba transitable, muro no');
+
+    const temple = globalThis.Game.getWaypoint('temple');
+    check('Game resuelve waypoints',
+        temple && temple.x === 30 && temple.y === 30 && temple.z === 7,
+        'temple = ' + temple);
+
+    check('Game puede describir el apilado de un tile',
+        globalThis.Game.getTileStack(11, 11, 7).join(',') === 'grass,lever',
+        '(11,11,7): ' + globalThis.Game.getTileStack(11, 11, 7).join(' -> '));
+
+    check('Game informa del mapa',
+        globalThis.Game.getMapInfo() && globalThis.Game.getMapInfo().name === 'sample');
+
+    // -----------------------------------------------------------------------
+    section('10. Aislamiento');
     // -----------------------------------------------------------------------
 
     const snapshot = JSON.stringify(world.getPlayer(player.id));

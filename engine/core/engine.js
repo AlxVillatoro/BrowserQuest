@@ -30,6 +30,7 @@ const Xml = require('../data/xml');
 const { ScriptRegistry } = require('../scripting/registry');
 const { loadContent } = require('../scripting/loader');
 const { createGame, installGame } = require('../scripting/game');
+const MapLoader = require('../world/loader');
 
 /**
  * @param {Object} [options]
@@ -129,6 +130,48 @@ function createEngine(options) {
         log.warning('scriptingEnabled = false: no se carga contenido');
     }
 
+    // --- 6. Mapa ----------------------------------------------------------
+    // Se carga DESPUÉS del contenido a propósito, y es el mismo orden que sigue
+    // The Forgotten Server: la validación de los spawns necesita los tipos de
+    // monstruo ya registrados, así que el mapa no puede ir antes.
+    const mapFile = config.mapFile
+        ? resolve(config.mapFile)
+        : path.join(resolve(config.worldDirectory), config.mapName + '.map.json');
+
+    let mapStats = null;
+
+    if (!fs.existsSync(mapFile)) {
+        log.warning('no se encontro el mapa ' + mapFile + ': el mundo no tendra geometria');
+    } else {
+        const mapResult = MapLoader.loadMap(mapFile, {
+            itemTypes: world.itemTypes,
+            monsterTypes: world.monsterTypes,
+            logger: log
+        });
+
+        // Los avisos se muestran siempre; los errores impiden arrancar. Seguir con
+        // un mapa a medias da fallos de movimiento imposibles de rastrear hasta su
+        // causa, así que es mejor parar y decir exactamente qué tile está mal.
+        mapResult.report.warnings.forEach((warning) => {
+            log.warning('mapa: ' + (warning.where ? warning.where + ': ' : '') + warning.message);
+        });
+
+        if (!mapResult.report.ok) {
+            log.error('el mapa tiene ' + mapResult.report.errors.length + ' error(es):');
+            console.error(mapResult.report.format());
+            throw new Error('mapa invalido: ' + mapFile);
+        }
+
+        world.map = mapResult.map;
+        mapStats = mapResult.map.stats();
+
+        log.info('mapa: ' + mapStats.name + ' ' + mapStats.size + ', ' +
+            mapStats.explicitTiles + ' tiles explicitos de ' +
+            mapStats.cellsIfMaterialized.toLocaleString('es-ES') + ' celdas (' +
+            (100 * mapStats.explicitTiles / mapStats.cellsIfMaterialized).toFixed(2) + '%)');
+        log.info('mapa: ' + mapStats.waypoints + ' waypoints, ' + mapStats.spawns + ' spawns');
+    }
+
     const stats = {
         declaredConfigKeys: loaded.declaredKeys,
         items: world.itemTypes.size,
@@ -139,7 +182,8 @@ function createEngine(options) {
         actions: registry.actions.size,
         movements: registry.movements.size,
         talkActions: registry.talkActions.length,
-        monsterTypes: world.monsterTypes.size
+        monsterTypes: world.monsterTypes.size,
+        map: mapStats
     };
 
     log.info('registrado: ' + stats.actions + ' acciones, ' + stats.movements +

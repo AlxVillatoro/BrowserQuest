@@ -64,6 +64,20 @@ function main() {
     console.log('  movimientos registrados . ' + s.movements + ' items');
     console.log('  comandos registrados .... ' + s.talkActions);
     console.log('  tipos de monstruo ....... ' + s.monsterTypes);
+
+    if (s.map) {
+        console.log('');
+        console.log('  Mapa');
+        console.log('  ----');
+        console.log('  nombre .................. ' + s.map.name);
+        console.log('  tamaño .................. ' + s.map.size);
+        console.log('  chunks .................. ' + s.map.chunks);
+        console.log('  tiles explícitos ........ ' + s.map.explicitTiles + ' de ' +
+            s.map.cellsIfMaterialized.toLocaleString('es-ES') + ' celdas (' +
+            (100 * s.map.explicitTiles / s.map.cellsIfMaterialized).toFixed(2) + '%)');
+        console.log('  waypoints ............... ' + s.map.waypoints);
+        console.log('  spawns .................. ' + s.map.spawns);
+    }
     console.log('');
 
     engine.shutdown();

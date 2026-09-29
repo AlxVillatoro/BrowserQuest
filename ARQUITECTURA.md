@@ -71,13 +71,19 @@ engine/               MOTOR
   data/
     xml.js              items.xml, data/XML/*.xml
   world/
-    world.js            estado del mundo
+    world.js            estado vivo: jugadores, items en el suelo
+    position.js         la coordenada canónica
+    item.js             instancia de item, con sus banderas
+    tile.js             el tile y su apilado (stackpos)
+    map.js              el mapa por chunks, con plantas y visibilidad
+    stepcost.js         duración del paso (la fórmula real de Tibia)
+    loader.js           carga y validación del formato de mapa
 data/                 CONTENIDO (el "datapack")
-  items/items.xml       definiciones semánticas de items
+  items/items.xml       definiciones semánticas de items, con sus banderas
   XML/vocations.xml     definiciones del motor
   scripts/              contenido programado (acciones, movimientos, comandos)
   monsters/             monstruos, en JavaScript
-  world/                mapas
+  world/                mapas (formato interno, legible en un diff)
 client/               CLIENTE (assets y render)
 tools/                herramientas y pruebas
 ```
@@ -96,7 +102,15 @@ falta tocar el motor para añadir un hechizo, la arquitectura está mal.
 | Envoltorios de entidad y API `Game` | hecho y probado |
 | Monstruos como módulos | hecho y probado |
 | Recarga en caliente | hecho y probado |
-| Mapas, tiles, movimiento | pendiente |
+| Mapa por chunks, con plantas | hecho y probado |
+| Tiles y apilado (*stackpos*) | hecho y probado |
+| Coste de paso (fórmula real de Tibia) | hecho y probado |
+| Reglas de paso y esquinas | hecho y probado |
+| Visibilidad entre plantas | hecho y probado |
+| Validación de mapas | hecho y probado |
+| Criaturas y movimiento en el mundo | pendiente |
+| Spawns instanciados desde el mapa | pendiente (los datos ya se cargan) |
+| Combate | pendiente |
 | Protocolo y red | pendiente |
 | Persistencia | pendiente |
 | Importadores OTBM/OTB/DAT/SPR | pendiente |
@@ -261,7 +275,69 @@ motivó ese script.
 
 Invertir 3 y 6, o 5 y 6, produce errores que parecen del script y son del orden de
 arranque. Es el fallo clásico al montar un datapack, así que el orden está fijado
-en el código y no se deja al azar.
+en el código y no se deja al azar. Nótese que **el mapa se carga después del
+contenido**, y es el mismo orden que sigue TFS: validar los spawns exige tener ya
+los tipos de monstruo registrados.
+
+### 3.7 El mundo: almacenamiento disperso, apilado y coste de paso
+
+**Almacenamiento.** El mapa se guarda por chunks de 32×32 por planta, y **sólo se
+almacenan los tiles que el mapa menciona**. El resto se resuelve contra el suelo
+por defecto de su planta.
+
+La razón es de escala: un mapa de 2048×2048 con 16 plantas son 67 millones de
+celdas. Materializarlas cuesta gigabytes para representar un desierto de suelo
+repetido. En el mapa de ejemplo la diferencia es medible: **28 tiles explícitos
+frente a 65.536 celdas posibles, un 0,04%**. Y la consulta sigue siendo O(1)
+porque va a un array indexado dentro del chunk.
+
+Es también la razón concreta por la que OTBM no se usa en tiempo de ejecución: su
+`TILE_AREA` de 256×256 obliga a recorrer para llegar a un tile.
+
+**Apilado.** El orden es el del servidor de Tibia: suelo → items de abajo →
+criaturas → items de arriba. El cliente dibuja en ese orden y resuelve el
+solapamiento **sin ningún z-buffer**, que es el truco central del 2.5D de Tibia.
+
+Dos detalles que se copian a propósito:
+
+- El suelo es un item **aparte**, no "el primero de la pila": hay exactamente uno,
+  siempre abajo del todo, y las reglas de paso dependen de él de forma distinta.
+- Hay un tope de **10 posiciones** direccionables, y no es una limitación del motor
+  sino del protocolo: el índice viaja en un byte, así que lo que quede por encima
+  es inalcanzable para el jugador.
+
+También se evita heredar una trampa documentada: en Tibia la bandera
+`FLAG_ALWAYSONTOP` significa en realidad "siempre en la banda de abajo" —el código
+de Remere's Map Editor lo comenta rindiéndose—, así que aquí se usan dos nombres
+distintos y explícitos.
+
+**Coste de paso.** Se implementa la fórmula real, no una aproximación:
+
+```
+calculatedStepSpeed = floor(857.36 * ln(speed / 2 + 261.29) - 4795.01 + 0.5)
+duration            = floor(1000 * groundSpeed / calculatedStepSpeed)
+stepDuration        = ceil(duration / 50) * 50
+```
+
+Verificado: con `speed = 220` da **550 ms**, que es el valor de la implementación
+de referencia. La cuantización final a 50 ms es lo que produce los **umbrales de
+velocidad** que nota cualquier jugador: medido, **todas las velocidades de 216 a
+236 dan exactamente los mismos 550 ms**, y con 215 se salta a 600. Ignorar esa
+cuantización haría que el movimiento se sintiera continuo y ajeno al original.
+
+**La regla de las esquinas.** En diagonal, si los dos tiles ortogonales que forman
+el vértice están bloqueados, el paso no es válido. Sin esta regla se atraviesan
+las paredes en diagonal, que es el fallo de movimiento más visible que existe. Hay
+que distinguirla del caso de moverse *hacia* un muro, que falla por otro motivo (el
+destino), y confundir los dos hace que la prueba mida lo que no cree medir.
+
+**Una lección de nombres.** La clase del mapa se llama `GameMap` y no `Map`. El
+nombre natural era `Map` —es el que usa TFS en C++— pero en JavaScript
+**ensombrece el `Map` nativo**, y como la clase necesita `Map` para sus propias
+colecciones, `new Map()` dentro de ella se llamaba a sí misma hasta desbordar la
+pila con un `RangeError` que no dice nada del problema real. Queda escrito porque
+es un error que se vuelve a cometer: el nombre natural de esa clase es justo el de
+una global que necesita.
 
 ### 3.6 Los formatos: interoperabilidad sí, runtime no
 
@@ -381,9 +457,12 @@ servido, pruebas end-to-end y de diagnóstico en verde.
 registro y despacho de eventos, envoltorios de entidad, API `Game`, monstruos como
 módulos y recarga en caliente. Verificado por `tools/test-engine.js`.
 
-**Fase 3 — Mundo.** Formato interno de mapa (chunks), tiles y apilado
-(*stackpos*), movimiento por tiles con coste de paso, plantas múltiples (Z). El
-importador de OTBM entra aquí.
+**Fase 3 — Mundo.** *En curso, la mayor parte hecha.* Formato interno de mapa por
+chunks con plantas y almacenamiento disperso, tiles con apilado (*stackpos*),
+coste de paso con la fórmula real de Tibia, reglas de paso incluidas las esquinas,
+visibilidad entre plantas y un validador de mapas que informa de todos los errores
+a la vez. Falta instanciar criaturas desde los spawns y el movimiento en el mundo.
+El importador de OTBM entra aquí.
 
 **Fase 4 — Red y protocolo.** Servidor autoritativo. Aquí es donde el cliente
 pasa a ser un terminal: hoy el cliente heredado es **cliente-autoritativo para el

@@ -1,0 +1,366 @@
+'use strict';
+
+/**
+ * Map: el mundo en memoria.
+ *
+ * SOBRE EL NOMBRE DE LA CLASE: se llama `GameMap` y no `Map` a propósito. Llamarla
+ * `Map` parecía natural —es lo que hace The Forgotten Server en C++— pero en
+ * JavaScript **ensombrece el `Map` nativo**, y como esta clase necesita `Map` para
+ * sus propias colecciones, `new Map()` dentro de ella se llamaba a sí misma hasta
+ * desbordar la pila con un `RangeError` que no dice nada del problema real.
+ *
+ * Se deja escrito porque es un error que se vuelve a cometer: el nombre natural
+ * de esta clase es justo el de una global que necesita.
+ *
+ * Almacenamiento por **chunks** de 32×32 por planta, y —esto es lo importante—
+ * **sólo se guardan los tiles que el mapa menciona explícitamente**. Los demás se
+ * resuelven contra el suelo por defecto de su planta.
+ *
+ * La razón es de escala: un mapa de 2048×2048 con 16 plantas son 67 millones de
+ * tiles. Materializarlos todos cuesta gigabytes para representar un desierto de
+ * suelo repetido. Guardando sólo las excepciones, un mapa así ocupa lo que ocupan
+ * sus paredes, objetos y casas, y la consulta sigue siendo O(1) porque va a un
+ * array indexado dentro del chunk.
+ *
+ * Es exactamente el motivo por el que ARQUITECTURA.md decide no usar OTBM en
+ * tiempo de ejecución: su `TILE_AREA` de 256×256 obliga a recorrer, y aquí se
+ * salta directo.
+ */
+
+const { Tile, TILE_FLAGS, MAX_STACKPOS } = require('./tile');
+const { Item } = require('./item');
+const { Position, DIRECTIONS, directionFrom } = require('./position');
+
+const CHUNK_SIZE = 32;
+const CHUNK_AREA = CHUNK_SIZE * CHUNK_SIZE;
+
+/** La última planta de superficie. De la 0 a la 7 se ve todo; de la 8 abajo, no. */
+const SURFACE_MAX_Z = 7;
+
+/** Plantas de diferencia que se ven en el subsuelo. */
+const UNDERGROUND_VISIBLE_FLOORS = 2;
+
+class GameMap {
+    constructor(options) {
+        const opts = options || {};
+
+        this.name = opts.name || 'unnamed';
+        this.width = opts.width || 0;
+        this.height = opts.height || 0;
+        this.floors = opts.floors || 1;
+
+        /** clave de chunk -> array de CHUNK_AREA posiciones (o null). */
+        this.chunks = new Map();
+
+        /** Suelo por defecto de cada planta. */
+        this.defaultGround = new Map();
+        /** Suelo de respaldo, si una planta no declara el suyo. */
+        this.fallbackGround = null;
+
+        this.waypoints = new Map();
+        this.spawns = [];
+        this.towns = [];
+
+        this.explicitTiles = 0;
+        this.log = opts.logger || null;
+    }
+
+    // -----------------------------------------------------------------------
+    // Límites y direccionamiento
+    // -----------------------------------------------------------------------
+
+    inBounds(x, y, z) {
+        return x >= 0 && y >= 0 && z >= 0 &&
+            x < this.width && y < this.height && z < this.floors;
+    }
+
+    _chunkKey(cx, cy, z) {
+        return cx + '_' + cy + '_' + z;
+    }
+
+    _getChunk(cx, cy, z) {
+        return this.chunks.get(this._chunkKey(cx, cy, z)) || null;
+    }
+
+    _getOrCreateChunk(cx, cy, z) {
+        const key = this._chunkKey(cx, cy, z);
+        let chunk = this.chunks.get(key);
+        if (!chunk) {
+            chunk = new Array(CHUNK_AREA).fill(null);
+            this.chunks.set(key, chunk);
+        }
+        return chunk;
+    }
+
+    /**
+     * El tile almacenado, o null si esa celda no tiene nada explícito.
+     *
+     * Devolver null NO significa "no hay nada": significa "aquí sólo hay suelo por
+     * defecto". Para saber si se puede caminar hay que usar `isWalkable`, no esto.
+     */
+    getTile(x, y, z) {
+        if (!this.inBounds(x, y, z)) {
+            return null;
+        }
+        const chunk = this._getChunk(
+            Math.floor(x / CHUNK_SIZE), Math.floor(y / CHUNK_SIZE), z);
+
+        if (!chunk) {
+            return null;
+        }
+        return chunk[(y % CHUNK_SIZE) * CHUNK_SIZE + (x % CHUNK_SIZE)] || null;
+    }
+
+    /** El tile almacenado, creándolo si hace falta. */
+    getOrCreateTile(x, y, z) {
+        if (!this.inBounds(x, y, z)) {
+            return null;
+        }
+        const chunk = this._getOrCreateChunk(
+            Math.floor(x / CHUNK_SIZE), Math.floor(y / CHUNK_SIZE), z);
+
+        const index = (y % CHUNK_SIZE) * CHUNK_SIZE + (x % CHUNK_SIZE);
+        if (!chunk[index]) {
+            chunk[index] = new Tile(x, y, z);
+
+            // Si la celda no declara suelo, hereda el de su planta. Así el loader
+            // no tiene que repetir el suelo en cada tile que menciona.
+            const ground = this.defaultGround.get(z) || this.fallbackGround;
+            if (ground) {
+                chunk[index].setGround(this._copyGround(ground, x, y, z));
+            }
+
+            this.explicitTiles += 1;
+        }
+        return chunk[index];
+    }
+
+    /**
+     * El suelo de una celda, venga de un tile explícito o del suelo por defecto.
+     *
+     * Se devuelve una copia por celda en vez del mismo objeto compartido: un item
+     * guarda su posición, y compartir la instancia haría que todos los tiles del
+     * mapa dijeran estar en la misma coordenada.
+     */
+    _copyGround(ground, x, y, z) {
+        const copy = new Item(ground.definition, {
+            count: 1,
+            attributes: { ...ground.attributes }
+        });
+        copy.position = { x: x, y: y, z: z };
+        return copy;
+    }
+
+    /**
+     * El suelo de una celda, venga de un tile explícito o del suelo por defecto.
+     *
+     * En el segundo caso se devuelve el objeto compartido de la planta. Su
+     * `position` no es significativa: quien pregunta ya sabe en qué celda está.
+     * Clonarlo en cada consulta costaría una asignación por celda y por frame sin
+     * dar nada a cambio.
+     */
+    getGround(x, y, z) {
+        const tile = this.getTile(x, y, z);
+        if (tile && tile.ground) {
+            return tile.ground;
+        }
+        const fallback = this.defaultGround.get(z) || this.fallbackGround;
+        return fallback || null;
+    }
+
+    /** Declara el suelo por defecto de una planta. */
+    setDefaultGround(z, item) {
+        this.defaultGround.set(z, item);
+        return this;
+    }
+
+    setFallbackGround(item) {
+        this.fallbackGround = item;
+        return this;
+    }
+
+    // -----------------------------------------------------------------------
+    // Reglas de paso
+    // -----------------------------------------------------------------------
+
+    /**
+     * ¿Se puede caminar por esta celda, por lo que respecta al terreno?
+     */
+    isWalkable(x, y, z) {
+        if (!this.inBounds(x, y, z)) {
+            return false;
+        }
+
+        const tile = this.getTile(x, y, z);
+        if (tile) {
+            return tile.isWalkable();
+        }
+
+        // Sin tile explícito: manda el suelo por defecto de la planta.
+        const ground = this.getGround(x, y, z);
+        return !!ground && !ground.blocksSolid;
+    }
+
+    /**
+     * ¿Puede una criatura dar este paso?
+     *
+     * Se comprueban tres cosas, y las tres importan:
+     *
+     *  1. El destino tiene que ser adyacente y estar en la MISMA planta. Cambiar de
+     *     planta no es caminar: en Tibia las escaleras son teleports disfrazados.
+     *  2. En diagonal, no se puede cortar la esquina: si los dos tiles ortogonales
+     *     que rodean el vértice están bloqueados, el paso no es válido. Sin esta
+     *     regla se atraviesan las esquinas de las paredes, que es el fallo de
+     *     movimiento más visible que existe.
+     *  3. El destino no puede tener una criatura bloqueante, salvo que quien
+     *     pregunte pueda empujarla.
+     *
+     * @param {Position|Object} from
+     * @param {Position|Object} to
+     * @param {Object} [options]
+     * @param {boolean} [options.ignoreCreatures]
+     * @param {boolean} [options.canPushCreatures]
+     * @returns {{allowed: boolean, reason: string|null}}
+     */
+    canWalk(from, to, options) {
+        const settings = options || {};
+
+        if (to.z !== from.z) {
+            return { allowed: false, reason: 'floorChange' };
+        }
+        if (!this.inBounds(to.x, to.y, to.z)) {
+            return { allowed: false, reason: 'outOfBounds' };
+        }
+        if (Math.abs(to.x - from.x) > 1 || Math.abs(to.y - from.y) > 1) {
+            return { allowed: false, reason: 'notAdjacent' };
+        }
+        if (to.x === from.x && to.y === from.y) {
+            return { allowed: false, reason: 'noMovement' };
+        }
+
+        if (!this.isWalkable(to.x, to.y, to.z)) {
+            return { allowed: false, reason: 'blocked' };
+        }
+
+        const direction = directionFrom(from, to);
+        if (direction && DIRECTIONS[direction].diagonal) {
+            // Las dos ortogonales que forman la esquina.
+            const freeA = this.isWalkable(to.x, from.y, from.z);
+            const freeB = this.isWalkable(from.x, to.y, from.z);
+
+            if (!freeA && !freeB) {
+                return { allowed: false, reason: 'cornerCut' };
+            }
+        }
+
+        if (!settings.ignoreCreatures) {
+            const tile = this.getTile(to.x, to.y, to.z);
+            if (tile && tile.creatures.length > 0 && !settings.canPushCreatures) {
+                return { allowed: false, reason: 'creature' };
+            }
+        }
+
+        return { allowed: true, reason: null };
+    }
+
+    /** Versión corta de `canWalk` para cuando sólo interesa el sí o el no. */
+    canWalkBoolean(from, to, options) {
+        return this.canWalk(from, to, options).allowed;
+    }
+
+    // -----------------------------------------------------------------------
+    // Visibilidad entre plantas
+    // -----------------------------------------------------------------------
+
+    /**
+     * ¿Se ve desde una planta a otra?
+     *
+     * La regla de Tibia, verificada en `creature.cpp::canSee`:
+     *
+     *   - Plantas 0..7 (superficie): se ve TODA la superficie y NADA del subsuelo.
+     *     Por eso desde la calle no se ve lo que pasa en una mazmorra.
+     *   - Plantas 8..15 (subsuelo): se ve dos plantas arriba y dos abajo. Es lo que
+     *     permite ver el piso de arriba desde un sótano y al revés.
+     */
+    canSee(fromZ, toZ) {
+        if (fromZ <= SURFACE_MAX_Z) {
+            return toZ <= SURFACE_MAX_Z;
+        }
+        return Math.abs(fromZ - toZ) <= UNDERGROUND_VISIBLE_FLOORS;
+    }
+
+    /**
+     * Desplazamiento en XY de una planta respecto a la cámara.
+     *
+     * ESTE DESPLAZAMIENTO ES LA SENSACIÓN DE PROFUNDIDAD del 2.5D: es lo que hace
+     * que al bajar una planta el mundo se desplace y se vea "por debajo" del piso
+     * superior. En The Forgotten Server lo calcula `Map::getOffsetZ`.
+     *
+     * PENDIENTE: la tabla de desplazamientos exacta no se ha verificado contra el
+     * código de TFS, así que aquí se devuelve cero en vez de inventar números. Es
+     * el punto que hay que rellenar al construir el renderer, leyendo
+     * `map.cpp::getOffsetZ`. Devolver ceros es inofensivo; devolver valores
+     * inventados daría un 2.5D que se ve mal y sería difícil de diagnosticar.
+     */
+    getFloorOffset(z, cameraZ) {
+        return { x: 0, y: 0 };
+    }
+
+    // -----------------------------------------------------------------------
+    // Recorrido e información
+    // -----------------------------------------------------------------------
+
+    /** Recorre sólo los tiles explícitos. Los demás son suelo por defecto. */
+    forEachTile(callback) {
+        this.chunks.forEach((chunk, key) => {
+            const parts = key.split('_');
+            const z = Number(parts[2]);
+
+            for (let index = 0; index < chunk.length; index += 1) {
+                const tile = chunk[index];
+                if (tile) {
+                    callback(tile, z);
+                }
+            }
+        });
+    }
+
+    getWaypoint(name) {
+        return this.waypoints.get(name) || null;
+    }
+
+    setWaypoint(name, position) {
+        this.waypoints.set(name, Position.from(position));
+        return this;
+    }
+
+    addSpawn(spawn) {
+        this.spawns.push(spawn);
+        return this;
+    }
+
+    stats() {
+        return {
+            name: this.name,
+            size: this.width + 'x' + this.height + 'x' + this.floors,
+            chunks: this.chunks.size,
+            explicitTiles: this.explicitTiles,
+            // Cuántas celdas habría que materializar para guardar el mapa entero.
+            // La diferencia con explicitTiles es el ahorro del almacenamiento
+            // disperso, y conviene tenerlo a la vista.
+            cellsIfMaterialized: this.width * this.height * this.floors,
+            waypoints: this.waypoints.size,
+            spawns: this.spawns.length
+        };
+    }
+}
+
+module.exports = {
+    GameMap,
+    CHUNK_SIZE,
+    SURFACE_MAX_Z,
+    UNDERGROUND_VISIBLE_FLOORS,
+    TILE_FLAGS,
+    MAX_STACKPOS,
+    Position
+};

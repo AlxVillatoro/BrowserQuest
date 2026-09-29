@@ -46,8 +46,11 @@ module.exports = {
     monstersDirectory: 'data/monsters',
     worldDirectory: 'data/world',
 
-    // Nombre del mapa, SIN extensión: el motor resuelve data/world/<nombre>.otbm
-    mapName: 'world',
+    // Nombre del mapa, SIN extensión: el motor resuelve
+    // `<worldDirectory>/<mapName>.map.json`. `mapFile` permite apuntar a un
+    // archivo concreto y gana sobre `mapName` si está definido.
+    mapName: 'sample',
+    mapFile: null,
 
     // -----------------------------------------------------------------------
     // Red

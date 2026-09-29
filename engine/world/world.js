@@ -24,6 +24,13 @@ class World {
         this.itemTypes = new Map();    // itemId -> definición de items.xml
         this.monsterTypes = new Map(); // nombre -> definición registrada por el contenido
 
+        /**
+         * La geometría del mundo. La carga el motor y vive aquí porque es estado
+         * del mundo, no configuración: los items se caen al suelo, las puertas se
+         * abren y los tiles cambian mientras el servidor corre.
+         */
+        this.map = null;
+
         // Registro de lo que hacen los scripts, para poder verificar en las
         // pruebas sin tener que espiar por dentro del estado del mundo.
         this.messages = [];

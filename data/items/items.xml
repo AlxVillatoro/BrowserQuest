@@ -1,28 +1,94 @@
 <?xml version='1.0' encoding='utf-8'?>
 <!--
-    Definiciones de items, en el dialecto de items.xml de The Forgotten Server.
+    Definiciones de items.
 
-    En TFS este archivo NO crea los ids: los crea el binario `items.otb` y aquí
-    sólo se completan con nombre y atributos de juego. El importador de OTB
-    todavía no existe en este motor, así que por ahora el XML es la única fuente
-    (ver ARQUITECTURA.md). Cuando llegue, este archivo pasará a tener su papel
-    real: completar, no crear.
+    Las BANDERAS son lo que hace funcionar el apilado y las reglas de paso, así
+    que conviene saber de dónde salen. En The Forgotten Server las banderas
+    binarias viven en `items.otb` (`FLAG_BLOCK_SOLID`, `FLAG_ALWAYSONTOP`...), y
+    este XML sólo aporta lo semántico. Aquí todavía no hay importador de OTB, así
+    que las banderas se declaran como atributos del XML. Cuando llegue el
+    importador, este archivo recuperará su papel real: completar, no definir.
 
-    Los atributos son los que lee el motor: `weight`, `attack`, `defense`,
-    `weaponType`... y se consultan con Game.getItemAttribute(id, clave).
+    Dos nombres que se usan aquí y conviene no confundir:
+
+      isGround      el suelo del tile. Hay uno por tile y siempre va abajo.
+      alwaysOnTop   se dibuja ENCIMA de las criaturas (mesas, barandillas,
+                    tejados). Equivale a FLAG_ALWAYSONTOP de Tibia, que pese al
+                    nombre significa "siempre en la banda de arriba": el código de
+                    Remere's Map Editor lo comenta literalmente diciendo que es
+                    confuso y que hay que aceptarlo. Aquí no se hereda el nombre.
+
+    Y las banderas de bloqueo, que son tres y NO son lo mismo:
+
+      blocksSolid       impide caminar por el tile
+      blocksProjectile  impide el paso de flechas y runas
+      blocksPathfind    impide que el cálculo de rutas lo atraviese
 -->
 <items>
 
-	<item id="1948" article="a" name="lever" />
+	<!-- ===================== Suelos ===================== -->
+
+	<item id="102" name="grass">
+		<attribute key="isGround" value="1" />
+		<attribute key="groundSpeed" value="150" />
+	</item>
+
+	<item id="103" name="dirt">
+		<attribute key="isGround" value="1" />
+		<attribute key="groundSpeed" value="150" />
+	</item>
+
+	<item id="104" name="stone floor">
+		<attribute key="isGround" value="1" />
+		<attribute key="groundSpeed" value="150" />
+	</item>
+
+	<!-- Un suelo mas lento, para poder probar el coste de paso por terreno. -->
+	<item id="105" name="shallow water">
+		<attribute key="isGround" value="1" />
+		<attribute key="groundSpeed" value="300" />
+	</item>
+
+	<!-- ===================== Obstaculos ===================== -->
+
+	<item id="111" article="a" name="stone wall">
+		<attribute key="blocksSolid" value="1" />
+		<attribute key="blocksProjectile" value="1" />
+		<attribute key="blocksPathfind" value="1" />
+	</item>
+
+	<!-- Va encima de las criaturas pero NO bloquea: sirve para ver la diferencia
+	     entre pertenecer a la banda de arriba e impedir el paso. -->
+	<item id="112" article="a" name="wooden railing">
+		<attribute key="alwaysOnTop" value="1" />
+	</item>
+
+	<item id="113" article="a" name="table">
+		<attribute key="alwaysOnTop" value="1" />
+		<attribute key="blocksSolid" value="1" />
+		<attribute key="blocksPathfind" value="1" />
+	</item>
+
+	<!-- ===================== Objetos usables ===================== -->
+
+	<item id="1948" article="a" name="lever">
+		<attribute key="useable" value="1" />
+	</item>
 
 	<item id="1387" article="a" name="teleport" />
 
+	<!-- ===================== Cosas recogibles ===================== -->
+
 	<item id="3031" article="a" name="gold coin" plural="gold coins">
 		<attribute key="weight" value="10" />
+		<attribute key="pickupable" value="1" />
+		<attribute key="stackable" value="1" />
 	</item>
 
 	<item id="2160" article="a" name="crystal coin" plural="crystal coins">
 		<attribute key="weight" value="10" />
+		<attribute key="pickupable" value="1" />
+		<attribute key="stackable" value="1" />
 	</item>
 
 	<item id="2400" article="a" name="magic sword">
@@ -31,11 +97,13 @@
 		<attribute key="defense" value="35" />
 		<attribute key="weaponType" value="sword" />
 		<attribute key="slotType" value="hand" />
+		<attribute key="pickupable" value="1" />
 	</item>
 
 	<item id="2376" article="a" name="sword ring">
 		<attribute key="weight" value="90" />
 		<attribute key="slotType" value="ring" />
+		<attribute key="pickupable" value="1" />
 	</item>
 
 	<!-- Rango de ids: la misma definición para toda una familia de sprites. -->

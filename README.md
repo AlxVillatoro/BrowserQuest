@@ -67,7 +67,8 @@ Todas se ejecutan con el servidor levantado (salvo `diag-world` y `audit-globals
 | `node tools/diag-world.js` | Arranca un mundo contra el mapa real y comprueba que quedó inicializado: mapa, rejilla de colisiones, zonas, áreas de mobs, cofres y entidades estáticas. |
 | `node tools/diag-protocol.js` | Conecta un bot y **vuelca todos los frames** que recibe. Distingue los dos caminos de envío del servidor (directo y por cola), que fallan de formas muy distintas. |
 | `node tools/audit-globals.js` | Detecta dependencias de globales implícitas en `server/js`. Ver *Deuda técnica*. |
-| `node tools/test-engine.js` | **Prueba del motor nuevo (36 comprobaciones).** Arranca el datapack entero y verifica el contrato completo: `config.js` con sus estructuras anidadas, `items.xml`, `vocations.xml`, la carga de módulos de contenido, las **firmas exactas** de cada tipo de evento, el **despacho** (un handler mueve a un jugador y crea items de verdad), la recarga en caliente y el aislamiento del estado. |
+| `node tools/test-engine.js` | **Prueba del motor (43 comprobaciones).** Arranca el datapack entero y verifica el contrato completo: `config.js` con sus estructuras anidadas, `items.xml`, `vocations.xml`, la carga de módulos de contenido, las **firmas exactas** de cada tipo de evento, el **despacho** (un handler mueve a un jugador y crea items de verdad), el mapa cargado, la recarga en caliente y el aislamiento del estado. |
+| `node tools/test-world.js` | **Prueba de la capa de mundo (45 comprobaciones).** Verifica el coste de paso con la **fórmula real de Tibia** y su cuantización a 50 ms, el apilado por tile (*stackpos*), las reglas de paso incluida la que impide **cortar esquinas en diagonal**, la visibilidad entre plantas (la superficie no ve el subsuelo) y que el validador de mapas informe de **todos** los errores con su coordenada, no del primero. |
 
 ---
 
@@ -91,13 +92,20 @@ engine/          MOTOR NUEVO
   core/            arranque, carga de config, logger
   scripting/       registro de contenido, cargador, envoltorios y API Game
   data/            lectura de items.xml y data/XML/*.xml
-  world/           estado del mundo
+  world/           el mundo
+    world.js         estado vivo: jugadores, items en el suelo
+    position.js      la coordenada canónica
+    item.js          instancia de item, con sus banderas
+    tile.js          el tile y su apilado (stackpos)
+    map.js           el mapa por chunks, con plantas y visibilidad
+    stepcost.js      duración del paso (la fórmula real de Tibia)
+    loader.js        carga y VALIDACIÓN del formato de mapa
 data/            DATAPACK (lo que toca un administrador de servidor)
-  items/           items.xml
+  items/           items.xml, con las banderas que hacen funcionar el apilado
   XML/             vocaciones, outfits, grupos...
   scripts/         contenido programado (acciones, movimientos, comandos)
   monsters/        monstruos, como módulos JavaScript
-  world/           mapas
+  world/           mapas en el formato interno (JSON, legible en un diff)
 client/js/       cliente (AMD/RequireJS, Canvas 2D, 3 capas de canvas)
 shared/js/       gametypes.js, compartido con el servidor heredado
 server/js/       servidor heredado de BrowserQuest

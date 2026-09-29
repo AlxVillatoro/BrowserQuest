@@ -25,6 +25,8 @@
  * interno ni mutarlo sin pasar por la API.
  */
 
+const { Position } = require('./entities');
+
 function createGame(deps) {
     const world = deps.world;
     const registry = deps.registry;
@@ -56,6 +58,45 @@ function createGame(deps) {
         /** Jugadores conectados. */
         getPlayerCount() {
             return world.players.size;
+        },
+
+        // -------------------------------------------------------------------
+        // Mapa
+        // -------------------------------------------------------------------
+
+        /** ¿Se puede caminar por esa celda? Devuelve false si no hay mapa. */
+        isWalkable(x, y, z) {
+            if (!world.map) {
+                return false;
+            }
+            return world.map.isWalkable(Number(x), Number(y), Number(z));
+        },
+
+        /** Posición de un waypoint, o null si el mapa no lo tiene. */
+        getWaypoint(name) {
+            const position = world.map ? world.map.getWaypoint(name) : null;
+            return position ? new Position(position.x, position.y, position.z) : null;
+        },
+
+        /**
+         * Lo que hay apilado en una celda, de abajo arriba.
+         *
+         * Devuelve nombres y no entidades a propósito: es una herramienta para
+         * depurar un tile, no una forma de alcanzar las instancias del mundo.
+         */
+        getTileStack(x, y, z) {
+            const tile = world.map ? world.map.getTile(Number(x), Number(y), Number(z)) : null;
+            if (!tile) {
+                return [];
+            }
+            return tile.getStack().map((thing) =>
+                (typeof thing.getName === 'function' ? thing.getName() : null) ||
+                thing.name || '?');
+        },
+
+        /** Informe del mapa cargado: tamaño, chunks, tiles explícitos, spawns. */
+        getMapInfo() {
+            return world.map ? world.map.stats() : null;
         },
 
         // -------------------------------------------------------------------
@@ -141,6 +182,7 @@ function createGame(deps) {
                 movements: registry.movements.size,
                 talkActions: registry.talkActions.length,
                 players: world.players.size,
+                map: world.map ? world.map.name : null,
                 worldType: config.worldType
             };
         }
