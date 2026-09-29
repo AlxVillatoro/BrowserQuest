@@ -475,7 +475,88 @@ async function main() {
     }
 
     // =======================================================================
-    section('8. Desconexion');
+    // =======================================================================
+    section('8. Las casillas que cambian LLEGAN al cliente');
+    // =======================================================================
+
+    {
+        /*
+         * ESTA SECCION EXISTE PORQUE EL MOTOR ESTABA BIEN Y EL CLIENTE MENTIA.
+         *
+         * El gestor de vista solo recalcula cuando el jugador se mueve o cuando alguien le
+         * dice que algo cambio. Ni crear un objeto, ni recogerlo, ni soltarlo le decian
+         * nada, asi que el suelo que veia el jugador se quedaba congelado: un objeto
+         * recogido seguia viendose en el suelo, y uno soltado no aparecia.
+         *
+         * Ninguna prueba del motor lo veia, porque el motor si hacia lo correcto en todos
+         * los casos. Lo unico que lo ve es contar lo que SALE POR EL SOCKET, que es lo que
+         * hace esta seccion.
+         */
+        const session = engine.sessions.get(loginOk[1]);
+        const position = session.player.position;
+        const T = P.TILE_FIELD;
+
+        const casillas = () => client.received
+            .filter((m) => m[0] === P.SERVER.TILE_ADD || m[0] === P.SERVER.TILE_UPDATE);
+
+        const objetosEn = (mensaje) => mensaje[T.ITEM_COUNT];
+
+        /*
+         * Se comparan DIFERENCIAS y no cuentas absolutas.
+         *
+         * La casilla del templo ya tenia algo encima de las secciones anteriores, asi que
+         * esperar "1 objeto" fallaba por un motivo que no tiene nada que ver con lo que esta
+         * seccion comprueba. Contar diferencias mide el cambio, que es lo unico que importa
+         * aqui y lo unico que no depende de lo que hicieran las pruebas de antes.
+         */
+        const enElSuelo = () => engine.world.map
+            .getTile(position.x, position.y, position.z)
+            .getItems().length - 1;
+
+        const antes = enElSuelo();
+
+        // --- Crear ---
+        client.received.length = 0;
+        engine.world.createItem(3031, 5, {
+            x: position.x, y: position.y, z: position.z
+        });
+        await sleep(600);
+
+        const alCrear = casillas();
+
+        check('un objeto creado por contenido LLEGA al cliente',
+            alCrear.length > 0 && objetosEn(alCrear[0]) === antes + 1,
+            alCrear.length > 0
+                ? 'la casilla se manda con ' + objetosEn(alCrear[0]) + ' objeto(s)'
+                : 'el objeto existe en el motor y no en la pantalla');
+
+        // --- Recoger ---
+        client.received.length = 0;
+        session.handle([P.CLIENT.PICKUP, position.x, position.y, position.z]);
+        await sleep(600);
+
+        const alRecoger = casillas();
+
+        check('y al recogerlo se manda la casilla VACIA',
+            alRecoger.length > 0 && objetosEn(alRecoger[0]) === antes,
+            alRecoger.length > 0
+                ? 'quedan ' + objetosEn(alRecoger[0]) + ' objetos en el suelo'
+                : 'el objeto recogido sigue viendose en el suelo hasta que te muevas');
+
+        // --- Soltar ---
+        client.received.length = 0;
+        session.handle([P.CLIENT.DROP, 0]);
+        await sleep(600);
+
+        const alSoltar = casillas();
+
+        check('y al soltarlo se manda otra vez con el objeto dentro',
+            alSoltar.length > 0 && objetosEn(alSoltar[0]) === antes + 1,
+            alSoltar.length > 0
+                ? 'la casilla vuelve con ' + objetosEn(alSoltar[0]) + ' objeto(s)'
+                : 'el objeto soltado no aparece hasta que te muevas');
+    }
+    section('9. Desconexion');
     // =======================================================================
 
     {
@@ -500,7 +581,7 @@ async function main() {
     }
 
     // =======================================================================
-    section('9. Cierre ordenado');
+    section('10. Cierre ordenado');
     // =======================================================================
 
     {

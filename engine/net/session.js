@@ -656,6 +656,19 @@ class SessionManager {
     }
 
     /** Un tick: cada sesión empuja sus cambios. */
+    /**
+     * Marca todas las vistas como sucias.
+     *
+     * Es a proposito la version burda: no se calcula QUE vista cubre la casilla que cambio,
+     * se marcan todas. Cuesta un recuento de casillas de mas por cada jugador conectado y
+     * ahorra el indice espacial que haria falta para acertar, ademas de la clase entera de
+     * fallos que aparece cuando ese indice se desincroniza del mundo. Con pocos jugadores es
+     * gratis, y el dia que no lo sea ya se sabra por que.
+     */
+    markAllDirty() {
+        this.view.markAllDirty();
+    }
+
     updateAll() {
         let messages = 0;
         this.sessions.forEach((session) => {

@@ -592,6 +592,18 @@ class World {
             return false;
         }
         tile.addItem(item);
+
+        /*
+         * Se avisa de que la casilla cambió.
+         *
+         * Sin esto, un objeto creado por contenido —el botín de un monstruo, lo que crea
+         * `/item`— existe en el motor y NO en la pantalla del jugador hasta que se mueve. El
+         * motor está bien y el cliente miente, que es la peor combinación porque ninguna
+         * prueba del motor lo ve: es el mismo fallo que el de recoger y soltar, por el otro
+         * lado.
+         */
+        this.emit('onTileChanged', target, tile);
+
         return true;
     }
 
@@ -611,6 +623,12 @@ class World {
             }
         }
         this.items.delete(item.instanceId);
+
+        // Y se avisa, por lo mismo que al ponerlo: quitarlo del motor no lo quita de la
+        // pantalla. Va DESPUÉS de sacarlo de la tabla, para que quien escuche y mire el mundo
+        // lo encuentre ya coherente y no a medias.
+        this.emit('onTileChanged', item.position, null);
+
         return true;
     }
 

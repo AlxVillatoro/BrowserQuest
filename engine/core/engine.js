@@ -641,6 +641,13 @@ function createEngine(options) {
     api.broadcastSay = (creature, text) => api.sessions.broadcastSay(creature, text);
 
     /*
+     * Un objeto que aparece o desaparece del suelo cambia una casilla, y el cliente tiene
+     * que enterarse. El mundo avisa y aqui se traduce a "mira otra vez", que es la misma
+     * separacion que en todo lo demas: el mundo no sabe que existe un protocolo.
+     */
+    world.on('onTileChanged', () => api.sessions.markAllDirty());
+
+    /*
      * El camino de los mensajes HACIA el jugador.
      *
      * El mundo avisa de que alguien ha hablado o de que hay un mensaje privado, y aquí
