@@ -47,6 +47,13 @@ class GameSession {
          */
         this.manager = opts.manager || null;
 
+        /**
+         * El repositorio de personajes, o null si el motor corre sin persistencia.
+         * La sesión no sabe de bases de datos: sólo le pide a éste que meta y saque
+         * personajes.
+         */
+        this.repository = opts.repository || null;
+
         /** Cómo se envía al cliente. Lo inyecta el adaptador. */
         this.send = opts.send || (() => {});
 
@@ -65,17 +72,45 @@ class GameSession {
     /**
      * El cliente entra al mundo.
      *
-     * El jugador se coloca en el waypoint `temple` del mapa si existe, y si no en
-     * el primer tile transitable de la planta 0. No se inventa una posición: un
-     * jugador dentro de un muro sería un fallo visible desde el primer segundo.
+     * Con persistencia, autentica y CARGA el personaje; sin ella, crea uno efímero.
+     * Los dos caminos acaban en el mismo sitio, así que el resto de la sesión no
+     * necesita saber cuál se usó.
+     *
+     * @param {Object} credentials { account, password, character }
+     * @returns {{handled: boolean, reason?: string, created?: boolean}}
      */
-    enterWorld(name) {
+    login(credentials) {
         if (this.entered) {
-            return false;
+            return { handled: false, reason: 'alreadyInWorld' };
         }
 
-        const spawn = this._findSpawnPosition();
-        const player = this.world.createPlayer(name || DEFAULT_PLAYER_NAME, spawn);
+        const credentials_ = credentials || {};
+        let player = null;
+        let created = false;
+
+        if (this.repository && this.repository.isOpen) {
+            const result = this.repository.login(credentials_);
+
+            if (result.error) {
+                // Se le dice al cliente POR QUÉ, que es lo mínimo para que pueda
+                // corregir la contraseña en vez de mirar una pantalla en negro.
+                this._send(P.message(P.SERVER.LOGIN_ERROR, result.error));
+                this.stats.rejected += 1;
+                return { handled: false, reason: 'loginFailed', error: result.error };
+            }
+
+            player = result.player;
+            created = result.created;
+        } else {
+            // Sin base de datos: personaje efímero. Es el atajo de desarrollo, y por
+            // eso se avisa en el registro: un servidor de verdad no debe correr así.
+            const name = credentials_.character || credentials_.account || DEFAULT_PLAYER_NAME;
+            player = this.world.createPlayer(name, this._findSpawnPosition());
+            if (this.log) {
+                this.log.warning('entra ' + player.name + ' SIN persistencia: ' +
+                    'el personaje se perdera al cerrar');
+            }
+        }
 
         this.player = player;
         this.playerId = player.id;
@@ -94,7 +129,12 @@ class GameSession {
             this.manager.register(this);
         }
 
-        return true;
+        return { handled: true, created: created };
+    }
+
+    /** El nombre del personaje en el mundo, para los registros y el chat. */
+    enterWorld(name) {
+        return this.login({ character: name });
     }
 
     _findSpawnPosition() {
@@ -127,6 +167,20 @@ class GameSession {
         }
         this.closed = true;
 
+        // Se GUARDA antes de sacarlo del mundo, y en ese orden: al revés, si el
+        // guardado fallara el personaje ya no estaría en el mundo y lo que hubiera
+        // hecho se perdería sin que nadie lo notara.
+        if (this.repository && this.player) {
+            try {
+                this.repository.logout(this.player);
+            } catch (error) {
+                if (this.log) {
+                    this.log.error('no se pudo guardar a ' + this.player.name +
+                        ' al desconectar: ' + (error && error.message));
+                }
+            }
+        }
+
         if (this.playerId !== null) {
             this.view.removePlayer(this.playerId);
             this.world.removePlayer(this.playerId);
@@ -157,7 +211,8 @@ class GameSession {
         const opcode = message[0];
         this.stats.received += 1;
 
-        if (!this.entered && opcode !== P.CLIENT.ENTER_WORLD) {
+        if (!this.entered && opcode !== P.CLIENT.ENTER_WORLD &&
+            opcode !== P.CLIENT.LOGIN) {
             // Hablar antes de entrar no es un error del servidor: es un cliente
             // que se adelantó. Se ignora sin más.
             this.stats.rejected += 1;
@@ -165,8 +220,18 @@ class GameSession {
         }
 
         switch (opcode) {
+            case P.CLIENT.LOGIN:
+                // [cuenta, contrasena, personaje]
+                return this.login({
+                    account: message[1],
+                    password: message[2],
+                    character: message[3]
+                });
+
             case P.CLIENT.ENTER_WORLD:
-                return { handled: this.enterWorld(message[1]) };
+                // Atajo sin credenciales. Sirve para un cliente que sólo quiere
+                // entrar con un nombre, y el motor decide si hay persistencia.
+                return this.login({ character: message[1] });
 
             case P.CLIENT.WALK_NORTH:
             case P.CLIENT.WALK_EAST:
@@ -348,6 +413,9 @@ class SessionManager {
         this.view = opts.view;
         this.log = opts.logger || null;
 
+        /** El repositorio de personajes, compartido por todas las sesiones. */
+        this.repository = opts.repository || null;
+
         /** id de jugador -> sesión. */
         this.sessions = new Map();
     }
@@ -359,6 +427,7 @@ class SessionManager {
             world: this.world,
             view: this.view,
             combat: this.engine.combat,
+            repository: this.repository,
             logger: this.log,
             manager: this,
             send: send

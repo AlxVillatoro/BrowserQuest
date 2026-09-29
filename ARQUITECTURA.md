@@ -126,7 +126,10 @@ falta tocar el motor para añadir un hechizo, la arquitectura está mal.
 | Cliente: proveedor de sprites de procedimiento | hecho (sin assets reales) |
 | Cliente: lectura de `.dat`/`.spr` | pendiente |
 | Predicción en el cliente | pendiente |
-| Persistencia | pendiente |
+| Persistencia: cuentas, personajes, items, storages | hecho y probado |
+| Guardado periódico y al apagar | hecho y probado |
+| Herramientas de mapas e items | pendiente |
+| Outfits | pendiente |
 | Importadores OTBM/OTB/DAT/SPR | pendiente |
 
 ---
@@ -546,12 +549,41 @@ Lo que falta: la lectura de `.dat`/`.spr` (la interfaz del proveedor ya está
 preparada, enchufarlo es cambiar una línea), la predicción para que el teclado
 responda sin esperar a la ida y vuelta, y la animación de verdad de los muñecos.
 
-**Fase 7 — Persistencia.** Cuentas, personajes, inventario, storages. El grafo del
-mundo es circular (criatura → tile → criaturas) a propósito, así que habrá que
-serializar campo a campo y no volcar el estado.
+**Fase 7 — Persistencia.** *Hecha.* Cuentas, personajes, inventario y *storages* en
+SQLite, con guardado periódico, al desconectar y al apagar.
 
-**Fase 8 — Herramientas.** Importador/exportador OTBM, `otb2json`, `spr`→atlas.
-Sólo lo que no cubran las herramientas MIT.
+**SQLite y no MySQL**, que es lo que usa TFS. Su motivo es atender a miles de
+jugadores desde varios procesos; aquí hay uno y la escala es otra, y SQLite viene
+**dentro de Node** desde la versión 22: cero dependencias, cero servidor que
+instalar, cero compilación nativa. Es la elección correcta para este proyecto y
+sería la incorrecta para el que tiene TFS.
+
+Tres cosas que hay que configurar siempre y que se olvidan, y que están en el
+código con su comentario: `PRAGMA foreign_keys = ON` (SQLite las trae **apagadas**
+por compatibilidad, así que borrar una cuenta deja sus personajes huérfanos sin que
+nada avise), `journal_mode = WAL` (sin él, guardar a uno bloquea la lectura de los
+demás) y `synchronous = NORMAL` (con WAL, sobrevive a que se caiga el proceso).
+
+Y tres decisiones que no son obvias:
+
+- **La contraseña se deriva con scrypt, no con SHA1.** TFS usa SHA1 sin sal, que hoy
+  no protege nada: cualquiera con la base saca las contraseñas de sus jugadores. Es
+  una divergencia deliberada de la referencia.
+- **Guardar es completo, no incremental.** Se reescribe el personaje entero. Un
+  inventario son decenas de filas, así que comparar para ahorrar escrituras cuesta
+  más de lo que ahorra, y sobre todo puede desincronizarse.
+- **Los *storages* son la tabla que hace posible el contenido.** Un módulo necesita
+  recordar que un jugador ya mató a un dragón o en qué paso va de una misión, y sin
+  esto no tendría dónde. En TFS son claves numéricas; aquí la clave es texto, para
+  poder escribir `mision.dragon` en vez de `4021`.
+
+Lo que falta: la web de creación de cuentas (hoy se crean solas, que es cómodo en
+desarrollo e inseguro en producción), las casas y los gremios, y el registro de
+muertes.
+
+**Fase 8 — Herramientas.** Importador/exportador OTBM, `otb2json`, `spr`→atlas, y
+un editor de mapas que reutilice la cámara y el orden de dibujo del cliente. Sólo lo
+que no cubran las herramientas MIT.
 
 **Fase 9 — Render 2.5D.** Hecho lo estructural (desplazamiento y orden). Falta la
 altura de sprite por item, las sombras proyectadas de verdad y el atlas.

@@ -66,6 +66,9 @@ export class ClientWorld {
         this.playerId = null;
         this.player = null;
 
+        /** El motivo del último rechazo de entrada, o null. */
+        this.loginError = null;
+
         /** El mundo que declaró el motor en el saludo. */
         this.size = { width: 0, height: 0, floors: 16 };
 
@@ -132,6 +135,14 @@ export class ClientWorld {
                         vocation: message[10]
                     };
                     events.push({ type: 'login', player: this.player });
+                    break;
+
+                case P.SERVER.LOGIN_ERROR:
+                    // El motor dice POR QUE no se pudo entrar, y el cliente tiene que
+                    // poder enseñarlo: una pantalla en negro sin explicación es lo
+                    // peor que se le puede hacer a alguien que intenta entrar.
+                    this.loginError = message[1];
+                    events.push({ type: 'loginError', error: message[1] });
                     break;
 
                 case P.SERVER.TILE_ADD:

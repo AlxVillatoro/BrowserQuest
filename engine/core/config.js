@@ -51,12 +51,17 @@ const DEFAULTS = {
  *
  * @param {string} filepath ruta de config.js
  * @param {Object} log
+ * @param {Object} [overrides] valores que GANAN sobre el archivo
  * @returns {{config: Object, source: string|null, declaredKeys: number}}
  */
-function load(filepath, log) {
+function load(filepath, log, overrides) {
     if (!fs.existsSync(filepath)) {
         log.warning('no se encontro ' + filepath + ': se usan los valores por defecto');
-        return { config: { ...DEFAULTS }, source: null, declaredKeys: 0 };
+        return {
+            config: { ...DEFAULTS, ...(overrides || {}) },
+            source: null,
+            declaredKeys: 0
+        };
     }
 
     // Se descarta la caché para que recargar la configuración funcione.
@@ -70,7 +75,11 @@ function load(filepath, log) {
 
     // El archivo gana sobre los valores por defecto, pero las claves que no
     // declare siguen teniendo un valor sensato.
-    const config = { ...DEFAULTS, ...exported };
+    //
+    // Y las SOBREESCRITURAS ganan sobre el archivo, que es lo que permite que las
+    // pruebas arranquen un motor con la persistencia apagada o con una base de datos
+    // en un archivo temporal, sin tocar `config.js` ni ensuciar el repositorio.
+    const config = { ...DEFAULTS, ...exported, ...(overrides || {}) };
 
     return {
         config: config,

@@ -62,12 +62,12 @@ class Game {
     // Arranque
     // -----------------------------------------------------------------------
 
-    start(url) {
+    start(url, credentials) {
         this.resize();
 
         this.connection = new Connection({
             url: url,
-            name: this.playerName,
+            credentials: credentials,
 
             onMessages: (messages) => this._onMessages(messages),
             onOpen: () => this._setStatus('conectado, entrando al mundo...'),
@@ -107,8 +107,33 @@ class Game {
                 this.camera.setCenter(event.player.x, event.player.y, event.player.z);
             } else if (event.type === 'floorChange') {
                 this.camera.z = event.z;
+            } else if (event.type === 'loginError') {
+                // Se vuelve a la pantalla de entrada con el motivo puesto. Sin esto,
+                // una contraseña mal escrita dejaba al jugador mirando una pantalla
+                // en negro sin saber qué había pasado.
+                this._showLoginError(event.error);
             }
         });
+    }
+
+    _showLoginError(error) {
+        this.running = false;
+        if (this.connection) {
+            this.connection.close();
+            this.connection = null;
+        }
+
+        const overlay = document.getElementById('overlay');
+        const message = document.getElementById('login-error');
+
+        if (message) {
+            message.textContent = error;
+            message.style.display = 'block';
+        }
+        if (overlay) {
+            overlay.style.display = 'flex';
+        }
+        this._setStatus('no se pudo entrar: ' + error);
     }
 
     _addSay(name, text) {
@@ -350,25 +375,30 @@ function boot() {
     form.addEventListener('submit', (event) => {
         event.preventDefault();
 
-        game.playerName = (nameInput.value || 'Aventurero').slice(0, 20);
+        const credentials = {
+            account: (document.getElementById('account').value || '').trim(),
+            password: document.getElementById('password').value || '',
+            character: (document.getElementById('name').value || 'Aventurero').trim()
+        };
 
         // La dirección del motor se puede forzar con `?ws=host:puerto`, que es lo
         // que hace falta para apuntar a otra máquina sin tocar el código. Por
         // defecto se usa el mismo host que sirvió la página y el puerto del motor.
         const params = new URLSearchParams(window.location.search);
         const override = params.get('ws');
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
 
-        let url;
-        if (override) {
-            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-            url = protocol + '//' + override;
-        } else {
-            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-            url = protocol + '//' + window.location.hostname + ':8080';
+        const url = override
+            ? protocol + '//' + override
+            : protocol + '//' + window.location.hostname + ':8080';
+
+        const error = document.getElementById('login-error');
+        if (error) {
+            error.style.display = 'none';
         }
 
         overlay.style.display = 'none';
-        game.start(url);
+        game.start(url, credentials);
     });
 
     chatForm.addEventListener('submit', (event) => {

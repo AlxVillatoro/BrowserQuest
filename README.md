@@ -39,6 +39,14 @@ procesos porque el motor y el servidor de archivos son cosas distintas a propós
 el cliente no depende de que el motor sepa servir páginas, ni el motor de que el
 cliente sepa dónde vive.
 
+La primera vez, escribe cualquier cuenta y contraseña: **la cuenta se crea sola**,
+igual que el personaje, y quedan guardados en `data/avillatoro.db`. Es una comodidad
+de desarrollo —`autoCreateAccounts` en `config.js`— y en un servidor de verdad se
+apaga, porque significa que cualquiera que se conecte puede crearse una cuenta.
+
+A partir de ahí, el personaje conserva nivel, experiencia, posición, inventario y lo
+que los scripts hayan recordado, aunque reinicies el motor.
+
 Las flechas o WASD mueven (con dos teclas a la vez, en diagonal), Intro abre el
 chat, Espacio mira el tile donde pisas, y un clic ataca a la criatura que haya
 debajo o mira el suelo.
@@ -89,6 +97,7 @@ Todas se ejecutan con el servidor levantado (salvo `diag-world` y `audit-globals
 | `node tools/diag-protocol.js` | Conecta un bot y **vuelca todos los frames** que recibe. Distingue los dos caminos de envío del servidor (directo y por cola), que fallan de formas muy distintas. |
 | `node tools/audit-globals.js` | Detecta dependencias de globales implícitas en `server/js`. Ver *Deuda técnica*. |
 | `node tools/test-engine.js` | **Prueba del motor (45 comprobaciones).** Arranca el datapack entero y verifica el contrato completo: `config.js` con sus estructuras anidadas, `items.xml`, `vocations.xml`, la carga de módulos de contenido, las **firmas exactas** de cada tipo de evento, el **despacho** (un handler mueve a un jugador y crea items de verdad), el mapa cargado, la recarga en caliente y el aislamiento del estado. |
+| `node tools/test-persistence.js` | **Prueba de la persistencia (49 comprobaciones).** Que las claves ajenas estén **activas** (SQLite las trae apagadas), que dos cuentas con la misma contraseña tengan hashes distintos, que la contraseña **no esté en la base en claro**, que un guardado que falla a medias se deshaga entero, que un servidor que se cayó no deje a nadie marcado como «dentro» para siempre, y que el estado sobreviva a **reiniciar el motor**, no solo a un `save`. |
 | `node tools/test-render.mjs` | **Prueba de la lógica de dibujo del cliente (39 comprobaciones).** El 2.5D no son píxeles: son dos decisiones —cuánto se desplaza cada planta y en qué orden se pinta— y las dos son cálculo puro, así que se verifican **sin abrir un navegador**. Comprueba que una planta por encima se corre abajo-derecha (para que una plataforma tape el suelo que tiene delante), que el suelo se recorre por diagonales, que dentro de un tile el orden es suelo → items de abajo → criaturas → items de arriba, y que **el cliente no se inventa el terreno que no ha recibido**. |
 | `node tools/test-client-e2e.mjs` | **Prueba de extremo a extremo DEL CLIENTE (23 comprobaciones).** Usa **los mismos módulos que carga el navegador** (`world.js`, `camera.js`, `drawlist.js`) contra un servidor de verdad escuchando en un puerto. Es lo que detecta las discrepancias que ninguna prueba por partes puede ver: un campo en la posición equivocada del mensaje, un opcode sin manejar, un orden que no cuadra. Se ejecuta sin navegador porque la lógica del cliente es cálculo puro; lo único que no cubre son las llamadas al lienzo. |
 | `node tools/check-avillatoro-client.js` | Comprueba que el cliente nuevo puede cargar **todos** sus módulos. Los imports usan rutas del montaje del servidor (`/avillatoro/...`, `/shared/...`), y un error de escritura en una de ellas no se ve hasta abrir el navegador, donde aparece como un `Failed to fetch dynamically imported module` que no dice qué archivo falta. Los montajes se leen de `server/config.json`, para que no haya dos verdades. |
@@ -120,8 +129,11 @@ engine/          MOTOR NUEVO
   core/            arranque, carga de config, logger, planificador de eventos
   scripting/       registro de contenido, cargador, envoltorios y API Game
   data/            lectura de items.xml y data/XML/*.xml
+  persistence/     LO QUE SOBREVIVE AL SERVIDOR
+    database.js      esquema, consultas y transacciones (SQLite de Node)
+    players.js       el puente entre las filas y las criaturas del mundo
   net/             LO QUE EL CLIENTE VE
-    protocol.js      opcodes, nombres y descripción de tiles y criaturas
+    protocol.js      puente al archivo compartido (el de verdad es shared/)
     view.js          qué ve cada jugador y qué hay que avisarle
     session.js       una conexión: traduce peticiones en acciones del mundo
   world/           el mundo

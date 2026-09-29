@@ -92,7 +92,14 @@ function main() {
     section('2. Descripcion de tiles y criaturas');
     // =======================================================================
 
-    const engine = createEngine({ rootDir: ROOT, logLevel: 'error' });
+    const engine = createEngine({
+        rootDir: ROOT,
+        logLevel: 'error',
+        // Sin persistencia: esta prueba usa el atajo de desarrollo para entrar al
+        // mundo con solo un nombre. Con la base de datos activa haria falta
+        // autenticarse, que es lo correcto pero no lo que se prueba aqui.
+        overrides: { useDatabase: false }
+    });
     const world = engine.world;
     const map = world.map;
 
@@ -158,7 +165,10 @@ function main() {
     const session = engine.createSession((message) => sent.push(message));
 
     const entered = session.enterWorld('Heroe');
-    check('el jugador entra al mundo', entered === true && session.playerId !== null);
+    check('el jugador entra al mundo',
+        entered.handled === true && session.playerId !== null,
+        'entrar devuelve un resultado y no un booleano: hay que poder distinguir ' +
+        '"entro" de "no entro, y por que"');
 
     const login = sent.slice();
     check('el cliente recibe el saludo con el tamano del mundo',

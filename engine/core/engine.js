@@ -37,6 +37,7 @@ const { Combat } = require('../world/combat');
 const { MonsterAI } = require('../world/ai');
 const { ViewManager } = require('../net/view');
 const { SessionManager } = require('../net/session');
+const { PlayerRepository } = require('../persistence/players');
 
 /**
  * @param {Object} [options]
@@ -53,8 +54,11 @@ function createEngine(options) {
     const resolve = (target) => (path.isAbsolute(target) ? target : path.resolve(rootDir, target));
 
     // --- 1. Configuración -------------------------------------------------
+    // `overrides` gana sobre el archivo, y es lo que permite que las pruebas
+    // arranquen un motor con la persistencia apagada o con una base de datos en un
+    // archivo temporal, sin tocar config.js ni ensuciar el repositorio.
     const configPath = resolve(settings.configFile || 'config.js');
-    const loaded = Config.load(configPath, log);
+    const loaded = Config.load(configPath, log, settings.overrides);
     const config = loaded.config;
 
     log.info('configuracion: ' + (loaded.source
@@ -282,6 +286,34 @@ function createEngine(options) {
             spawnStats.monsters + ' monstruos vivos');
     }
 
+    // --- 11. Persistencia -------------------------------------------------
+    // Se crea DESPUES del mapa porque un personaje nuevo necesita saber donde
+    // aparece, y eso lo dice el waypoint `temple` del mapa.
+    let repository = null;
+    let persistenceStats = null;
+
+    if (config.useDatabase) {
+        const spawn = world.map ? world.map.getWaypoint('temple') : null;
+
+        repository = new PlayerRepository({
+            world: world,
+            logger: log,
+            config: config,
+            file: resolve(config.databaseFile),
+            spawnPosition: spawn
+                ? { x: spawn.x, y: spawn.y, z: spawn.z }
+                : { x: 0, y: 0, z: 7 }
+        });
+
+        repository.open();
+        persistenceStats = repository.database.stats_();
+
+        log.info('personajes guardados: ' + persistenceStats.players +
+            ' en ' + persistenceStats.accounts + ' cuenta(s)');
+    } else {
+        log.warning('persistencia APAGADA: los personajes viven lo que viva el proceso');
+    }
+
     const stats = {
         declaredConfigKeys: loaded.declaredKeys,
         items: world.itemTypes.size,
@@ -296,6 +328,7 @@ function createEngine(options) {
         monsterTypes: world.monsterTypes.size,
         monsters: world.monsters.size,
         spawns: spawnStats.spawns,
+        persistence: persistenceStats,
         map: mapStats
     };
 
@@ -315,6 +348,7 @@ function createEngine(options) {
         combat: combat,
         ai: ai,
         view: view,
+        repository: repository,
         sessions: null,
         vocations: vocations,
         stats: stats,
@@ -356,8 +390,24 @@ function createEngine(options) {
             // literal, asi que no es una variable en su ambito. La referencia se
             // resuelve al llamar, cuando ya existe.
             if (api.sessions) {
+                // Cerrar las sesiones guarda a cada jugador, porque el guardado va
+                // en `close()`. Es el ultimo momento en que se puede salvar lo que
+                // hayan hecho.
                 api.sessions.closeAll();
             }
+
+            // Y despues se guarda a quien pudiera quedar, por si alguna sesion no
+            // llego a registrarse. Guardar de mas no cuesta nada; perder a alguien
+            // si.
+            if (repository) {
+                const result = repository.saveAll();
+                if (result.failed > 0) {
+                    log.error('al apagar no se pudo guardar a ' + result.failed +
+                        ' jugador(es)');
+                }
+                repository.close();
+            }
+
             world.stop();
             ai.stop();
             if (scheduler) {
@@ -378,8 +428,29 @@ function createEngine(options) {
         engine: api,
         world: world,
         view: view,
+        repository: repository,
         logger: log
     });
+
+    /**
+     * Guardado periódico.
+     *
+     * Va en el planificador y no en un `setInterval` propio: así comparte reloj con
+     * el mundo, se puede avanzar a mano en las pruebas y no queda un temporizador
+     * suelto que nadie recuerda apagar.
+     */
+    if (repository) {
+        const autosave = () => {
+            const result = repository.saveAll();
+            if (result.failed > 0) {
+                log.error('guardado periodico: ' + result.saved + ' guardados, ' +
+                    result.failed + ' fallaron');
+            }
+            scheduler.schedule(config.autosaveIntervalMs, autosave, 'autosave');
+        };
+
+        scheduler.schedule(config.autosaveIntervalMs, autosave, 'autosave');
+    }
 
     /** Difunde lo que dice una criatura a quien pueda oírla. */
     api.broadcastSay = (creature, text) => api.sessions.broadcastSay(creature, text);

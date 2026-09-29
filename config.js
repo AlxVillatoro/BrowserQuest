@@ -89,6 +89,31 @@ module.exports = {
     maxPacketsPerSecond: 50,
 
     // -----------------------------------------------------------------------
+    // Persistencia
+    // -----------------------------------------------------------------------
+    //
+    // Se puede APAGAR, y sirve para dos cosas: arrancar el motor sin dejar archivos
+    // por el repositorio, y poder probar el juego sin crear una cuenta. Con la
+    // persistencia apagada los personajes son efímeros: viven lo que vive el
+    // proceso.
+    useDatabase: true,
+    databaseFile: 'data/avillatoro.db',
+
+    // Crea la cuenta sola si no existe, con la contraseña que mande el cliente.
+    //
+    // ES UNA COMODIDAD DE DESARROLLO Y ES INSEGURO: cualquiera que se conecte puede
+    // crearse una cuenta. En un servidor de verdad las cuentas se crean desde una
+    // web, como en Tibia, y esto se pone en false. Se deja activo porque lo
+    // contrario obliga a crear cuentas a mano antes de poder probar nada.
+    autoCreateAccounts: true,
+
+    // Cada cuánto se guardan los jugadores que están dentro. Entre guardado y
+    // guardado se pierde lo que haya pasado, así que cuanto más corto, menos se
+    // pierde y más se escribe. Un minuto es el equilibrio que usa cualquier servidor
+    // de este tamaño. Al desconectar y al apagar SIEMPRE se guarda.
+    autosaveIntervalMs: 60000,
+
+    // -----------------------------------------------------------------------
     // Scripting
     // -----------------------------------------------------------------------
     // Interruptor maestro. Con esto en false el motor arranca sin cargar ningún

@@ -115,11 +115,49 @@ class PlayerWrapper extends CreatureWrapper {
         return this;
     }
 
+    /** Mueve al jugador a otra posición, sin comprobar el camino. */
     teleportTo(position) {
         if (!position) {
             return false;
         }
         return this.world.teleportPlayer(this.id, position.x, position.y, position.z);
+    }
+
+    // -----------------------------------------------------------------------
+    // Storages: la memoria del contenido
+    // -----------------------------------------------------------------------
+
+    /**
+     * Guarda un valor en el personaje.
+     *
+     * Es la API de TFS y es la que hace posible el contenido con memoria: un módulo
+     * necesita poder recordar que un jugador ya mató a un dragón o en qué paso va de
+     * una misión, y sin esto no tendría dónde.
+     *
+     * Se escribe en el mundo, NO en la base de datos al momento. Si cada llamada
+     * hiciera su propia escritura, un script con un bucle dentro machacaría el
+     * disco; el guardado periódico y el de salida se encargan de bajarlo.
+     */
+    setStorageValue(key, value) {
+        const player = this.world.getPlayer(this.id);
+        if (!player) {
+            return false;
+        }
+        if (!(player.storages instanceof Map)) {
+            player.storages = new Map();
+        }
+        player.storages.set(String(key), Number(value));
+        return true;
+    }
+
+    /** Lee un valor guardado, o null si nunca se guardó. */
+    getStorageValue(key) {
+        const player = this.world.getPlayer(this.id);
+        if (!player || !(player.storages instanceof Map)) {
+            return null;
+        }
+        const value = player.storages.get(String(key));
+        return value === undefined ? null : value;
     }
 }
 

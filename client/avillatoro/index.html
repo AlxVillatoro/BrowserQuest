@@ -175,12 +175,30 @@
                 <h1>Avillatoro</h1>
                 <p>Cliente del motor nuevo</p>
 
-                <label for="name">Nombre</label>
-                <input id="name" maxlength="20" value="Aventurero" autocomplete="off">
+                <!--
+                    La contraseña NO se guarda en ningún sitio del navegador: viaja
+                    al motor y se olvida. Guardarla en `localStorage` sería más
+                    cómodo y es justo lo que no hay que hacer, porque cualquier
+                    script de la página podría leerla.
+                -->
+                <label for="account">Cuenta</label>
+                <input id="account" autocomplete="username" value="aventurero">
+
+                <label for="password">Contraseña</label>
+                <input id="password" type="password" autocomplete="current-password"
+                       value="aventurero">
+
+                <label for="name">Personaje</label>
+                <input id="name" maxlength="20" autocomplete="off" value="Aventurero">
+
+                <p id="login-error"
+                   style="display:none; color:#e08080; margin:0 0 12px; font-size:12px"></p>
 
                 <button type="submit">Entrar al mundo</button>
 
                 <p class="hint">
+                    Si la cuenta no existe se crea sola, y el personaje también: es
+                    un servidor de desarrollo.<br><br>
                     Flechas o WASD para caminar &middot; con dos teclas a la vez,
                     en diagonal<br>
                     Intro para hablar &middot; Espacio para mirar donde pisas<br>

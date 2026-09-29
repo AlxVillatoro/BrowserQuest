@@ -141,6 +141,18 @@ export const CLIENT = {
     /** Atacar a una criatura. */
     ATTACK: 0x8A,
 
+    /**
+     * Entrar al mundo, con credenciales.
+     *
+     * Lleva `[cuenta, contrasena, personaje]`. El servidor autentica y carga el
+     * personaje; si la persistencia está apagada, crea uno efímero con ese nombre,
+     * que es el atajo de desarrollo.
+     *
+     * El opcode 0x0A es el de la zona de login de Tibia. El transporte sigue siendo
+     * JSON sobre WebSocket: copiar el número no da compatibilidad.
+     */
+    LOGIN: 0x0A,
+
     /** El cliente ya terminó de cargar y quiere entrar al mundo. */
     ENTER_WORLD: 0x0F,
 

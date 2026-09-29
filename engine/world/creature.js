@@ -229,6 +229,30 @@ class Player extends Creature {
 
         /** Habilidad de ataque, que todavía no se entrena. */
         this.attackSkill = opts.attackSkill === undefined ? 10 : opts.attackSkill;
+
+        /**
+         * Lo que lleva encima.
+         *
+         * Cada entrada es `{ slot, position, typeId, count, attributes }`, que es
+         * exactamente la forma de la tabla `player_items`. Se copia la forma de la
+         * base a propósito: traducir entre dos representaciones parecidas es donde
+         * se pierden los campos.
+         */
+        this.inventory = [];
+
+        /**
+         * La memoria del contenido: lo que un módulo necesita recordar entre
+         * partidas.
+         *
+         * Sin esto, un módulo no puede saber que un jugador ya mató a un dragón ni
+         * en qué paso va de una misión, y el contenido deja de poder contar nada.
+         * Es la pieza que hace que el datapack sea algo más que decorado.
+         */
+        this.storages = new Map();
+
+        /** Identidad persistente. Nulos si el motor corre sin base de datos. */
+        this.accountId = null;
+        this.characterId = null;
     }
 
     get kind() {

@@ -26,7 +26,18 @@ export class Connection {
         const opts = options || {};
 
         this.url = opts.url;
-        this.name = opts.name || 'Aventurero';
+
+        /**
+         * Las credenciales con las que entrar.
+         *
+         * Se piden al arrancar y no se guardan en ningún sitio: viven en memoria
+         * mientras la pestaña esté abierta. Guardarlas en `localStorage` sería más
+         * cómodo y es justo lo que no hay que hacer, porque cualquier script de la
+         * página podría leerlas.
+         */
+        this.credentials = opts.credentials || {
+            account: '', password: '', character: ''
+        };
 
         /** Se llaman cuando llega algo. */
         this.onMessages = opts.onMessages || (() => {});
@@ -59,7 +70,12 @@ export class Connection {
 
             // El servidor no habla primero: hay que pedir entrar. El saludo y el
             // mapa llegan como respuesta a esto.
-            this.send([CLIENT.ENTER_WORLD, this.name]);
+            this.send([
+                CLIENT.LOGIN,
+                this.credentials.account,
+                this.credentials.password,
+                this.credentials.character
+            ]);
             this.onOpen();
         };
 

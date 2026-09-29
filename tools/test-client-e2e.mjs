@@ -112,7 +112,14 @@ class HeadlessClient {
 async function main() {
     console.log('Prueba de extremo a extremo del cliente (' + ROOT + ')');
 
-    const engine = createEngine({ rootDir: ROOT, logLevel: 'error' });
+    const engine = createEngine({
+        rootDir: ROOT,
+        logLevel: 'error',
+        // Sin persistencia: esta prueba usa el atajo de desarrollo para entrar al
+        // mundo con solo un nombre. Con la base de datos activa haria falta
+        // autenticarse, que es lo correcto pero no lo que se prueba aqui.
+        overrides: { useDatabase: false }
+    });
     const network = createNetworkServer({
         engine: engine,
         port: 0,

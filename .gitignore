@@ -21,3 +21,10 @@ client/audio/music
 
 # Restos de investigacion de los subagentes
 .research
+
+# La base de datos de personajes. Es estado de EJECUCION, no contenido: el datapack
+# se versiona, lo que los jugadores van haciendo no. Las dos extensiones de al lado
+# son el registro de escritura anticipada de SQLite.
+*.db
+*.db-wal
+*.db-shm

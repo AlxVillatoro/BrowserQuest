@@ -57,7 +57,15 @@ function lastMessage(world, playerId) {
 function main() {
     console.log('Prueba del motor (' + ROOT + ')');
 
-    const engine = createEngine({ rootDir: ROOT, logLevel: 'error' });
+    const engine = createEngine({
+        rootDir: ROOT,
+        logLevel: 'error',
+        // Sin persistencia: esta prueba comprueba el motor, y arrancarlo con base
+        // de datos dejaria un archivo en `data/` cada vez que se ejecuta. Que las
+        // pruebas no ensucien el repositorio no es estetica: un `.db` de verdad
+        // mezclado con los de prueba hace imposible saber cual se esta mirando.
+        overrides: { useDatabase: false }
+    });
     const world = engine.world;
     const config = engine.config;
 
