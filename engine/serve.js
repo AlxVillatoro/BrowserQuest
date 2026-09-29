@@ -33,7 +33,7 @@ function parseArgs(argv) {
     return args;
 }
 
-function main() {
+async function main() {
     const args = parseArgs(process.argv.slice(2));
     const rootDir = path.resolve(__dirname, '..');
 
@@ -52,12 +52,16 @@ function main() {
         verbose: args.verbose
     });
 
+    // Se espera a que el servidor este ENLAZADO antes de seguir. Enlazar es
+    // asincrono, asi que preguntar el puerto aqui mismo devolvia null y el
+    // arranque anunciaba "ws://localhost:null", que es un mensaje peor que no
+    // anunciar nada.
+    const realPort = await network.ready;
+
     // El motor arranca DESPUES de la red, para que el primer tick ya encuentre las
     // conexiones registradas y no se pierda el mapa inicial de nadie que entrara en
     // ese hueco.
     engine.start();
-
-    const realPort = network.port();
 
     if (!args.quiet) {
         console.log('');
@@ -89,10 +93,16 @@ function main() {
 
     process.on('SIGINT', () => shutdown('SIGINT'));
     process.on('SIGTERM', () => shutdown('SIGTERM'));
+
+    return { engine: engine, network: network, port: realPort };
 }
 
 if (require.main === module) {
-    main();
+    main().catch((error) => {
+        console.error('no se pudo arrancar el servidor:');
+        console.error(error && error.stack ? error.stack : error);
+        process.exit(1);
+    });
 }
 
 module.exports = { main, parseArgs };
