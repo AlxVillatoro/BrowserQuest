@@ -63,6 +63,15 @@ class World {
         /** Los NPC vivos, por nombre, para poder encontrarlos sin recorrer el mundo. */
         this.npcs = new Map();
 
+        /**
+         * Qué objeto hace de dinero.
+         *
+         * Es configurable y no una constante porque el día que un datapack use otra moneda
+         * —o varias— no debería haber que tocar el motor. El valor por defecto es el de
+         * Tibia: 3031, la moneda de oro.
+         */
+        this.moneyItemId = 3031;
+
         this.map = null;
 
         /** Estado vivo. */
@@ -777,7 +786,104 @@ class World {
         // una criatura que habla, que es exactamente lo que es.
         npc.onSayLine = (text) => this.creatureSay(npc.id, text);
 
+        /**
+         * El comercio, del lado del NPC.
+         *
+         * Se engancha aquí y no en la clase `Npc` para que la clase siga sin conocer el
+         * mundo: un NPC sabe a quién tiene delante y qué dice, y no cómo se mueven los
+         * objetos entre inventarios. El día que el comercio cambie —precios por reputación,
+         * impuestos, trueques— se cambia en un sitio y la clase no se entera.
+         *
+         * El jugador que llega puede ser un envoltorio de contenido, así que se traduce a
+         * la criatura de verdad antes de operar.
+         */
+        npc.shopList = () => this.npcShopList(npc);
+
+        /**
+         * Con qué se envuelve a quien le habla.
+         *
+         * Lo pone el registro al arrancar, porque el envoltorio vive en la capa de
+         * contenido y el mundo no la conoce. Si nadie lo pone, el diálogo recibe la
+         * criatura tal cual y sigue funcionando; lo que se pierde es la protección, no la
+         * funcionalidad.
+         */
+        if (this.wrapForContent) {
+            npc.wrapSpeaker = this.wrapForContent;
+        }
+
+        npc.buyFor = (playerWrapper, words) => {
+            const player = this._unwrapPlayer(playerWrapper);
+            if (!player) {
+                return { ok: false, reason: 'noPlayer' };
+            }
+
+            const offer = this.npcOfferFromWords(npc, words, 'buy');
+            if (!offer) {
+                return { ok: false, reason: 'notSold' };
+            }
+
+            const result = this.buyFromNpc(player, npc, offer.typeId, 1);
+            result.offer = result.offer || offer;
+            return result;
+        };
+
+        npc.sellFor = (playerWrapper, words) => {
+            const player = this._unwrapPlayer(playerWrapper);
+            if (!player) {
+                return { ok: false, reason: 'noPlayer' };
+            }
+
+            const offer = this.npcOfferFromWords(npc, words, 'sell');
+            if (!offer) {
+                return { ok: false, reason: 'notBought' };
+            }
+
+            const result = this.sellToNpc(player, npc, offer.typeId, 1);
+            result.offer = result.offer || offer;
+            return result;
+        };
+
         return npc;
+    }
+
+    /**
+     * Del envoltorio de contenido a la criatura de verdad.
+     *
+     * El contenido recibe envoltorios —para que no pueda tocar el mundo a mano— y el
+     * comercio necesita la criatura. La traducción se hace en un solo sitio en vez de que
+     * cada método acepte las dos formas, que es como se acaba con la mitad de los métodos
+     * aceptando una y la otra mitad la otra.
+     */
+    _unwrapPlayer(candidate) {
+        if (!candidate) {
+            return null;
+        }
+
+        /*
+         * SE RESUELVE POR `id`, y no preguntando si es un jugador.
+         *
+         * La primera versión preguntaba `candidate.isPlayer()` y el ENVOLTORIO también
+         * responde que sí —delega en la criatura, que es justo lo que debe hacer—, así que
+         * devolvía el envoltorio y el comercio contaba el inventario del envoltorio, que no
+         * existe: siempre cero monedas.
+         *
+         * El identificador lo tienen los dos y el mundo sabe traducirlo, así que es la
+         * pregunta que no se puede contestar mal. Es el mismo error que el `undefined !==
+         * null` del generador de apariciones: comprobar una propiedad que las dos cosas
+         * comparten no distingue nada.
+         */
+        if (candidate.id !== undefined) {
+            const resolved = this.getPlayer(candidate.id);
+            if (resolved) {
+                return resolved;
+            }
+        }
+
+        // Si no está en el mundo, se acepta sólo si tiene posición, que es lo que
+        // distingue a una criatura de verdad de un envoltorio.
+        return (candidate.isPlayer && candidate.isPlayer() && candidate.position)
+            ? candidate
+            : null;
     }
 
     /**
@@ -816,8 +922,7 @@ class World {
     }
 
     /** Vuelve a enganchar el diálogo a todos los NPC vivos. Tras recargar el contenido. */
-    refreshDialogues() {
-        let count = 0;
+    refreshDialogues() {        let count = 0;
         this.npcs.forEach((npc) => {
             if (this.attachDialogue(npc, npc.name)) {
                 count += 1;
@@ -851,9 +956,315 @@ class World {
         return replies;
     }
 
-    /** Todo lo que lleva encima una criatura, para el comando de listar. */
-    inventoryOf(creature) {
+    // =======================================================================
+    // El dinero y el comercio
+    // =======================================================================
+
+    /**
+     * Cuánto dinero lleva encima.
+     *
+     * Se cuenta sumando las pilas en vez de guardar un saldo aparte. Un saldo sería más
+     * rápido y crearía una segunda fuente de verdad: el día que un objeto de dinero se
+     * cayera al suelo o se recogiera por otro camino, el saldo y lo que lleva encima
+     * dirían cosas distintas y no habría forma de saber cuál es la buena.
+     */
+    countMoney(creature) {
+        const moneyId = this.moneyItemId;
+
         return (creature.inventory instanceof Array ? creature.inventory : [])
+            .filter((entry) => entry.typeId === moneyId)
+            .reduce((total, entry) => total + entry.count, 0);
+    }
+
+    /** ¿Puede pagar esto? NO toca nada: sólo mira. */
+    canPayMoney(creature, amount) {
+        return this.countMoney(creature) >= Number(amount);
+    }
+
+    /**
+     * Mete objetos en el inventario, apilando si ya hay.
+     *
+     * @returns {number} cuántas pilas nuevas hizo falta crear
+     */
+    giveItem(creature, typeId, count) {
+        const id = Number(typeId);
+        const amount = Math.max(1, Number(count) || 1);
+
+        if (!(creature.inventory instanceof Array)) {
+            creature.inventory = [];
+        }
+
+        const definition = this.itemTypes.get(id);
+
+        if (definition && definition.attributes && definition.attributes.stackable) {
+            const existing = creature.inventory.find((entry) => entry.typeId === id);
+
+            if (existing) {
+                existing.count += amount;
+                return 0;
+            }
+        }
+
+        creature.inventory.push({
+            slot: 'backpack',
+            position: creature.inventory.length,
+            typeId: id,
+            count: amount,
+            attributes: null
+        });
+
+        return 1;
+    }
+
+    /**
+     * Saca objetos del inventario.
+     *
+     * @returns {number} cuántos quitó de verdad
+     *
+     * SE QUITA DE LA ÚLTIMA PILA HACIA LA PRIMERA, y da igual cuál sea, porque el dinero
+     * es fungible: da lo mismo de qué pila salen las monedas. Lo que sí importa es que
+     * devuelva CUÁNTOS quitó, porque quien llama tiene que poder comprobar que sacó todo
+     * lo que quería antes de dar nada a cambio.
+     */
+    takeItem(creature, typeId, count) {
+        const id = Number(typeId);
+        let remaining = Math.max(0, Number(count) || 0);
+        let taken = 0;
+
+        if (!(creature.inventory instanceof Array)) {
+            return 0;
+        }
+
+        for (let index = creature.inventory.length - 1; index >= 0 && remaining > 0;
+            index -= 1) {
+
+            const entry = creature.inventory[index];
+            if (entry.typeId !== id) {
+                continue;
+            }
+
+            const used = Math.min(entry.count, remaining);
+            entry.count -= used;
+            remaining -= used;
+            taken += used;
+
+            if (entry.count <= 0) {
+                creature.inventory.splice(index, 1);
+            }
+        }
+
+        this._reindexInventory(creature.inventory);
+
+        return taken;
+    }
+
+    /**
+     * Busca en la tienda de un NPC lo que ofrece para un objeto.
+     *
+     * @param {Npc} npc
+     * @param {number} typeId
+     * @param {'buy'|'sell'} mode desde el punto de vista del JUGADOR
+     */
+    npcOffer(npc, typeId, mode) {
+        const shop = npc && npc.dialogue && npc.dialogue.shop;
+
+        if (!shop || !(shop.items instanceof Array)) {
+            return null;
+        }
+
+        const id = Number(typeId);
+        const offer = shop.items.find((entry) => Number(entry.id) === id);
+
+        if (!offer) {
+            return null;
+        }
+
+        const price = mode === 'buy' ? offer.buy : offer.sell;
+
+        // Un precio ausente significa que el NPC NO hace esa operación. Un 0 sería
+        // "gratis" o "no lo quiero", que son cosas distintas de "no lo vendo", y
+        // confundirlas regalaría objetos.
+        if (price === undefined || price === null || Number(price) <= 0) {
+            return null;
+        }
+
+        return {
+            typeId: id,
+            price: Number(price),
+            name: offer.name || (this.itemTypes.get(id)
+                ? this.itemTypes.get(id).name
+                : 'objeto ' + id)
+        };
+    }
+
+    /** Lo que un NPC tiene a la venta, para poder listarlo. */
+    npcShopList(npc) {
+        const shop = npc && npc.dialogue && npc.dialogue.shop;
+        if (!shop || !(shop.items instanceof Array)) {
+            return [];
+        }
+
+        return shop.items.map((entry) => ({
+            typeId: Number(entry.id),
+            buy: entry.buy === undefined ? null : Number(entry.buy),
+            sell: entry.sell === undefined ? null : Number(entry.sell),
+            name: entry.name || (this.itemTypes.get(Number(entry.id))
+                ? this.itemTypes.get(Number(entry.id)).name
+                : 'objeto ' + entry.id)
+        }));
+    }
+
+    /**
+     * Encuentra en la tienda lo que el jugador ha nombrado.
+     *
+     * Un jugador escribe "comprar espada" y no "comprar 2400", así que hay que reconocer
+     * el nombre. Se busca la frase COMPLETA primero —"magic sword" antes que "sword"— y si
+     * no, palabra por palabra, porque si no, quien escriba "comprar sword" se llevaría el
+     * primer objeto que contenga esa palabra y no el que quería.
+     *
+     * @returns {Object|null} la oferta, ya con su precio
+     */
+    npcOfferFromWords(npc, words, mode) {
+        const list = Array.isArray(words) ? words : [];
+        if (list.length === 0) {
+            return null;
+        }
+
+        const sentence = ' ' + list.join(' ') + ' ';
+        const shop = this.npcShopList(npc);
+
+        /**
+         * Cada entrada se puede llamar de DOS maneras, y hay que aceptar las dos.
+         *
+         * El nombre canónico es el de `items.xml` —"magic sword", que es el de Tibia— y el
+         * del mercader es el que le ponga la tienda. Un jugador que escribe "espada"
+         * espera que le entiendan, y uno que escribe "magic sword" también. Quedarse con
+         * uno de los dos obliga a adivinar cuál, que es lo peor de las dos opciones.
+         */
+        const candidates = shop.map((entry) => {
+            const canonical = this.itemTypes.get(entry.typeId);
+            return {
+                typeId: entry.typeId,
+                buy: entry.buy,
+                sell: entry.sell,
+                names: canonical && canonical.name !== entry.name
+                    ? [entry.name, canonical.name]
+                    : [entry.name]
+            };
+        });
+
+        const sellable = candidates.filter((entry) =>
+            mode === 'buy' ? entry.buy > 0 : entry.sell > 0);
+
+        const flatten = (entry) => entry.names.join(' ').toLowerCase();
+
+        // Primero el nombre entero dentro de la frase.
+        const whole = sellable
+            .filter((entry) => entry.names.some((name) =>
+                sentence.indexOf(' ' + name.toLowerCase() + ' ') !== -1))
+            .sort((a, b) => flatten(b).length - flatten(a).length)[0];
+
+        if (whole) {
+            return this.npcOffer(npc, whole.typeId, mode);
+        }
+
+        // Y si no, la palabra más LARGA que aparezca, que es la que más probablemente
+        // sea el nombre del objeto y no un artículo.
+        const single = sellable
+            .filter((entry) => list.some((word) => entry.names.some((name) =>
+                name.toLowerCase().split(' ').indexOf(word) !== -1)))
+            .sort((a, b) => flatten(b).length - flatten(a).length)[0];
+
+        return single ? this.npcOffer(npc, single.typeId, mode) : null;
+    }
+
+    /**
+     * Comprar a un NPC.
+     *
+     * LO PRIMERO ES COMPROBAR TODO, Y SÓLO DESPUÉS SE TOCA ALGO.
+     *
+     * Una compra a medias —el dinero cobrado y el objeto no entregado, o al revés— es el
+     * peor fallo posible en un comercio, porque el jugador pierde algo y no hay forma de
+     * deshacerlo. Por eso aquí no se paga hasta que está comprobado que se puede pagar Y
+     * que el objeto existe: las dos condiciones se miran antes de la primera escritura.
+     */
+    buyFromNpc(player, npc, typeId, count) {
+        const amount = Math.max(1, Number(count) || 1);
+        const offer = this.npcOffer(npc, typeId, 'buy');
+
+        if (!offer) {
+            return { ok: false, reason: 'notSold' };
+        }
+        if (!this.itemTypes.has(offer.typeId)) {
+            // La tienda ofrece algo que no está definido. Es un fallo del contenido y se
+            // dice, en vez de entregar un objeto que no existe y romper el inventario.
+            return { ok: false, reason: 'unknownItem' };
+        }
+
+        const total = offer.price * amount;
+
+        if (!this.canPayMoney(player, total)) {
+            return {
+                ok: false, reason: 'notEnoughMoney',
+                price: total, money: this.countMoney(player)
+            };
+        }
+
+        const paid = this.takeItem(player, this.moneyItemId, total);
+        if (paid !== total) {
+            // No debería pasar: se acaba de contar. Si pasa, se devuelve lo cobrado en
+            // vez de seguir, porque seguir dejaría al jugador sin dinero y sin objeto.
+            this.giveItem(player, this.moneyItemId, paid);
+            return { ok: false, reason: 'paymentFailed' };
+        }
+
+        this.giveItem(player, offer.typeId, amount);
+
+        return { ok: true, offer: offer, count: amount, total: total };
+    }
+
+    /**
+     * Vender a un NPC.
+     *
+     * Igual que la compra: primero se comprueba que el jugador TIENE lo que dice vender y
+     * que el NPC lo compra, y sólo entonces se quita y se paga.
+     */
+    sellToNpc(player, npc, typeId, count) {
+        const amount = Math.max(1, Number(count) || 1);
+        const offer = this.npcOffer(npc, typeId, 'sell');
+
+        if (!offer) {
+            return { ok: false, reason: 'notBought' };
+        }
+
+        const owned = this.countOf(player, offer.typeId);
+
+        if (owned < amount) {
+            return { ok: false, reason: 'notOwned', owned: owned };
+        }
+
+        const taken = this.takeItem(player, offer.typeId, amount);
+        if (taken !== amount) {
+            this.giveItem(player, offer.typeId, taken);
+            return { ok: false, reason: 'takeFailed' };
+        }
+
+        const total = offer.price * amount;
+        this.giveItem(player, this.moneyItemId, total);
+
+        return { ok: true, offer: offer, count: amount, total: total };
+    }
+
+    /** Cuántos objetos de un tipo lleva encima. */
+    countOf(creature, typeId) {
+        const id = Number(typeId);
+        return (creature.inventory instanceof Array ? creature.inventory : [])
+            .filter((entry) => entry.typeId === id)
+            .reduce((total, entry) => total + entry.count, 0);
+    }
+
+    /** Todo lo que lleva encima una criatura, para el comando de listar. */
+    inventoryOf(creature) {        return (creature.inventory instanceof Array ? creature.inventory : [])
             .map((entry, index) => {
                 const definition = this.itemTypes.get(entry.typeId);
                 return {

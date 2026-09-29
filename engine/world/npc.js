@@ -204,7 +204,17 @@ class Npc extends Creature {
                 this.focusUntil = at + FOCUS_TIMEOUT_MS;
             }
 
-            keyword.handler(this, speaker, words);
+            /*
+             * AL CONTENIDO SE LE PASA UN ENVOLTORIO, no la criatura.
+             *
+             * El foco se sigue guardando con la criatura de verdad —es la identidad, y dos
+             * envoltorios distintos del mismo jugador no serían iguales—, pero lo que llega
+             * al módulo de diálogo es el envoltorio, igual que en las acciones y los
+             * comandos. Sin esto, un NPC podría mover jugadores por el mapa o cambiarles la
+             * vida a mano, y la única razón por la que las demás formas de contenido no
+             * pueden es que a ellas sí se les pasa el envoltorio.
+             */
+            keyword.handler(this, this._wrap(speaker), words);
 
             if (keyword.farewell) {
                 this.clearFocus();
@@ -217,11 +227,22 @@ class Npc extends Creature {
         // ha roto, y es lo que distingue "no te he entendido" de "no te estoy escuchando".
         if (focused && this.defaultHandler) {
             this.focusUntil = at + FOCUS_TIMEOUT_MS;
-            this.defaultHandler(this, speaker, words);
+            this.defaultHandler(this, this._wrap(speaker), words);
             return { heard: true, replied: true, keyword: 'default' };
         }
 
         return { heard: true, replied: false, reason: focused ? 'noKeyword' : 'notFocused' };
+    }
+
+    /**
+     * El envoltorio de contenido de una criatura.
+     *
+     * Lo instala el mundo al crear el NPC. Si no estuviera —por ejemplo en una prueba que
+     * construye un NPC a mano— se devuelve la criatura tal cual, para que el diálogo
+     * funcione igual aunque sea sin la protección.
+     */
+    _wrap(creature) {
+        return this.wrapSpeaker ? this.wrapSpeaker(creature) : creature;
     }
 
     /**

@@ -136,7 +136,7 @@ falta tocar el motor para añadir un hechizo, la arquitectura está mal.
 | Muerte del jugador y reaparición | hecho y probado |
 | NPCs: definiciones, diálogo y paseo | hecho y probado |
 | Importadores OTBM/OTB/DAT/SPR | pendiente |
-| Comercio con NPC | pendiente |
+| Comercio con NPC (comprar y vender) | hecho y probado |
 
 ---
 

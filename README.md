@@ -67,7 +67,7 @@ verdad sí las conoce, porque las saca de su propio `.dat`.
 **Hay dos NPC con los que hablar.** El Guía está junto al templo y el Herrero un poco
 al oeste, y el Herrero pasea por su taller. Se les saluda con `hola` y a partir de ahí
 atienden sólo a quien les ha saludado, hasta que se les dice `adios` o pasa un minuto.
-Tienen palabras clave: prueba con `templo`, `donde`, `armas`, `precios` o `salir`.
+Tienen palabras clave: prueba con `templo`, `donde`, `armas` o `salir`. Al herrero se le puede **comprar y vender**: `ofrezco` lista lo que tiene, `comprar espada` y `vender espada` hacen la operacion, y `dinero` dice cuanto llevas. Un objeto se reconoce tanto por su nombre de mercader (`espada`) como por el de Tibia (`magic sword`).
 Sólo oyen a cuatro casillas, así que hay que acercarse.
 
 Al morir pierdes un 10% de la experiencia y sueltas todo lo que llevabas donde caíste,

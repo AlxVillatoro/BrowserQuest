@@ -495,7 +495,7 @@ function main() {
             herrero.walkRadius + '; el guia no se mueve');
 
         check('y el modulo de contenido le da las palabras clave',
-            guia.keywords.length === 6 && herrero.keywords.length === 5,
+            guia.keywords.length === 6 && herrero.keywords.length === 8,
             guia.keywords.length + ' y ' + herrero.keywords.length);
 
         // --- El foco ---
@@ -563,7 +563,101 @@ function main() {
     }
 
     // -----------------------------------------------------------------------
-    section('12. Aislamiento');
+    section('12. El comercio');
+    // -----------------------------------------------------------------------
+
+    {
+        const npc = world.getNpc('Herrero');
+        const buyer = world.createPlayer('Comprador', { x: 38, y: 41, z: 7 });
+        const oye = (texto) => { npc.hear(buyer, texto); return npc.lastSaid; };
+
+        check('el NPC declara su tienda',
+            npc.shopList().length === 3 && npc.shopList()[0].buy === 1000,
+            npc.shopList().map((e) => e.name + '(' + e.buy + '/' + e.sell + ')').join(' '));
+
+        // --- Lo que NO debe pasar ---
+        oye('hola');
+        const sinDinero = oye('comprar espada');
+
+        check('sin dinero no se compra, y NO se cobra nada',
+            /Te faltan monedas/.test(sinDinero) &&
+            world.countMoney(buyer) === 0 && world.countOf(buyer, 2400) === 0,
+            '"' + sinDinero + '"');
+
+        // --- Comprar ---
+        world.giveItem(buyer, 3031, 2500);
+
+        check('se compra y se cobra el precio',
+            /Aqui tienes 1x espada/.test(oye('comprar espada')) &&
+            world.countMoney(buyer) === 1500 && world.countOf(buyer, 2400) === 1,
+            'dinero ' + world.countMoney(buyer) + ', espadas ' + world.countOf(buyer, 2400));
+
+        // --- Vender ---
+        check('se vende y se cobra lo que el NPC paga',
+            /Te doy 400 monedas/.test(oye('vender espada')) &&
+            world.countMoney(buyer) === 1900 && world.countOf(buyer, 2400) === 0,
+            'dinero ' + world.countMoney(buyer) + '; comprar a 1000 y vender a 400: la ' +
+            'diferencia es el margen del mercader');
+
+        // --- Los dos nombres ---
+        check('el objeto se reconoce por el nombre del mercader Y por el de Tibia',
+            world.npcOfferFromWords(npc, ['espada'], 'buy') !== null &&
+            world.npcOfferFromWords(npc, ['magic', 'sword'], 'buy') !== null,
+            'quien escribe "espada" espera que le entiendan, y quien escribe ' +
+            '"magic sword" tambien');
+
+        // --- Las asimetrias ---
+        check('hay cosas que vende y no compra',
+            world.npcOfferFromWords(npc, ['anillo'], 'buy') !== null &&
+            world.npcOfferFromWords(npc, ['anillo'], 'sell') === null &&
+            /Eso no lo compro/.test(oye('vender anillo')),
+            'que falte un precio significa "no hago esa operacion", no "es gratis"');
+
+        check('y cosas que no vende ni compra',
+            /Eso no lo vendo/.test(oye('comprar casa')),
+            'y lo dice, en vez de entregar un objeto que no existe');
+
+        // --- La moneda no es un negocio ---
+        const monedasAntes = world.countMoney(buyer);
+        const compraMonedas = world.buyFromNpc(buyer, npc, 3031, 100);
+        world.sellToNpc(buyer, npc, 3031, 100);
+
+        check('comprar y vender monedas no da beneficio',
+            compraMonedas.ok === true && world.countMoney(buyer) === monedasAntes,
+            monedasAntes + ' -> ' + world.countMoney(buyer) + ': al mismo precio no hay ' +
+            'negocio, y si lo hubiera seria una maquina de fabricar dinero');
+
+        // --- Atomicidad: lo mas importante de un comercio ---
+        const dinero = world.countMoney(buyer);
+        const fallo = world.buyFromNpc(buyer, npc, 2376, 99);
+
+        check('una compra que no se puede pagar no cobra NADA',
+            fallo.ok === false && fallo.reason === 'notEnoughMoney' &&
+            world.countMoney(buyer) === dinero && world.countOf(buyer, 2376) === 0,
+            'cuesta ' + fallo.price + ' y tiene ' + fallo.money +
+            ': TODO se comprueba antes de tocar nada');
+
+        const vendido = world.sellToNpc(buyer, npc, 2400, 5);
+
+        check('y una venta de lo que no se tiene tampoco cobra nada',
+            vendido.ok === false && vendido.reason === 'notOwned' &&
+            world.countMoney(buyer) === dinero,
+            'no se paga por lo que no se recibe');
+
+        // El envoltorio tiene que ver lo mismo que el motor: la primera version contaba el
+        // inventario DEL ENVOLTORIO, que no existe, y siempre daba cero.
+        const envoltorio = engine.registry.entities.player(buyer.id);
+
+        check('el envoltorio de contenido ve el mismo dinero que el motor',
+            envoltorio.getMoney() === world.countMoney(buyer) &&
+            envoltorio.getItemCountById(3031) === world.countOf(buyer, 3031),
+            envoltorio.getMoney() + ' = ' + world.countMoney(buyer));
+
+        world.removePlayer(buyer.id);
+    }
+
+    // -----------------------------------------------------------------------
+    section('13. Aislamiento');
     // -----------------------------------------------------------------------
 
     // Se comparan los campos que importan, no el objeto entero. El grafo del mundo

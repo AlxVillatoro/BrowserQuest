@@ -114,6 +114,19 @@ function createEngine(options) {
     // --- 3. Registro de contenido -----------------------------------------
     const registry = new ScriptRegistry({ world: world, logger: log });
 
+    /*
+     * El mundo necesita saber ENVOLVER una criatura para el contenido, y el envoltorio vive
+     * en la capa de contenido. Se le pasa la fabrica en vez de que el mundo la importe: asi
+     * el mundo sigue sin conocer el registro, que es lo que permite que el motor funcione
+     * sin datapack.
+     *
+     * Lo usan los NPC para pasarle a su dialogo un envoltorio del jugador y no la criatura
+     * cruda. Sin esto, un modulo de dialogo podria mover jugadores por el mapa, y la unica
+     * razon por la que las acciones y los comandos no pueden es que a ellos si se les pasa
+     * el envoltorio.
+     */
+    world.wrapForContent = (creature) => registry.entities.creature(creature.id);
+
     const loadOptions = () => ({
         directories: [
             resolve(config.scriptsDirectory),

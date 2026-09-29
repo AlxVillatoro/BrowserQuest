@@ -183,6 +183,18 @@ class PlayerWrapper extends CreatureWrapper {
         return this.getInventory().length;
     }
 
+    /** Cuánto dinero lleva encima. */
+    getMoney() {
+        const player = this.world.getPlayer(this.id);
+        return player ? this.world.countMoney(player) : 0;
+    }
+
+    /** Cuántos objetos de un tipo lleva. */
+    getItemCountById(typeId) {
+        const player = this.world.getPlayer(this.id);
+        return player ? this.world.countOf(player, typeId) : 0;
+    }
+
     /**
      * Suelta un objeto, por su posición en la lista.
      *
