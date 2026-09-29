@@ -90,6 +90,15 @@ export const SERVER = {
     /** El jugador ha muerto. */
     PLAYER_DEATH: 0x32,
 
+    /**
+     * El inventario entero.
+     *
+     * Se manda completo cada vez que cambia. Un inventario son decenas de entradas, así
+     * que calcular diferencias para ahorrar eso cuesta más código del que ahorra y abre
+     * la puerta a que el jugador y el motor no estén de acuerdo sobre lo que lleva.
+     */
+    INVENTORY: 0x33,
+
     /** Cambio de planta: el cliente debe redibujar todo. */
     FLOOR_CHANGE: 0x40,
 
@@ -137,6 +146,20 @@ export const CLIENT = {
 
     /** Mirar algo. */
     LOOK: 0x8C,
+
+    /**
+     * Recoger el objeto que hay encima de una casilla.
+     *
+     * En Tibia esto se hace con los opcodes de mover objeto, que llevan origen, destino y
+     * posición en la pila. Aquí se pide directamente "recoge de esta casilla" porque el
+     * motor ya sabe cuál es el objeto de más arriba, y mandar la posición en la pila
+     * obligaría al cliente a contar la misma pila que el motor para llegar a la misma
+     * conclusión.
+     */
+    PICKUP: 0x8D,
+
+    /** Soltar en el suelo un objeto del inventario. */
+    DROP: 0x8E,
 
     /** Atacar a una criatura. */
     ATTACK: 0x8A,
@@ -360,6 +383,13 @@ export const UPDATE_FIELD = {
     ID: 1,
     DIRECTION: 2,
     HEALTH: 3
+};
+
+export const INVENTORY_FIELD = {
+    COUNT: 1,
+    /** Donde empieza cada entrada; cada una ocupa cuatro posiciones. */
+    ENTRIES: 2,
+    STRIDE: 4
 };
 
 /**

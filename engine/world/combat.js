@@ -331,6 +331,17 @@ class Combat {
      * @returns {Array} los items que cayeron al suelo
      */
     handleDeath(target, killer) {
+        // Un JUGADOR que muere no es un monstruo que muere, y el camino se separa aquí.
+        // Antes de esto, un jugador a cero de vida se quedaba en el mundo con la barra
+        // vacía y sin que pasara nada: el combate no tenía conclusión para él.
+        //
+        // El contador de muertes NO se toca en este camino: que a uno le maten no es una
+        // muerte que hayas causado, y sumarla haría que las estadísticas dijeran lo
+        // contrario de lo que pasó.
+        if (target.isPlayer && target.isPlayer()) {
+            return this.handlePlayerDeath(target, killer);
+        }
+
         this.stats.kills += 1;
 
         const dropped = target.isMonster && target.isMonster()
@@ -359,6 +370,84 @@ class Combat {
         if (target.isMonster && target.isMonster() && this.world) {
             this.world.killMonster(target.id, killer || null);
         }
+
+        return dropped;
+    }
+
+    /**
+     * Resuelve la muerte de un jugador.
+     *
+     * LAS TRES COSAS QUE PASAN, y por qué cada una:
+     *
+     * 1. PIERDE EXPERIENCIA, un porcentaje configurable. Sin castigo, morir no cuesta
+     *    nada y el combate deja de tener tensión; es la razón de que en Tibia importe
+     *    no morir.
+     * 2. SUELTA EL INVENTARIO en el sitio donde cayó. Es lo que hace Tibia, y es lo que
+     *    convierte recoger cosas en una decisión: llevarlo todo encima tiene un precio.
+     *    Se puede apagar con `deathDropInventory`, porque para un servidor de pruebas es
+     *    molesto.
+     * 3. REAPARECE en el templo con la vida llena. Es lo único que puede hacer: dejarlo
+     *    a cero de vida en el sitio sería dejarlo atrapado sin poder jugar.
+     *
+     * @returns {Array} lo que soltó
+     */
+    handlePlayerDeath(player, killer) {
+        const dropped = [];
+
+        // --- 1. La experiencia ---
+        const percent = this.config.deathLosePercent === undefined
+            ? 10 : Number(this.config.deathLosePercent);
+
+        if (percent > 0 && player.experience > 0) {
+            const lost = Math.floor(player.experience * percent / 100);
+            player.experience = Math.max(0, player.experience - lost);
+            player.level = levelForExperience(player.experience, 1);
+        }
+
+        // --- 2. El inventario ---
+        if (this.config.deathDropInventory !== false &&
+            player.inventory instanceof Array && player.inventory.length > 0) {
+
+            // Se sueltan TODOS, y se hace con una copia porque `dropItem` va quitando
+            // del inventario mientras se recorre.
+            const count = player.inventory.length;
+            for (let index = 0; index < count; index += 1) {
+                const result = this.world.dropItem(player, 0);
+                if (result.ok) {
+                    dropped.push(result.item);
+                }
+            }
+        }
+
+        // --- 3. Reaparecer ---
+        const temple = this.world.map ? this.world.map.getWaypoint('temple') : null;
+        const spawn = this.config.templePosition ||
+            (temple ? { x: temple.x, y: temple.y, z: temple.z } : null);
+
+        if (spawn) {
+            this.world.teleportCreature(player, spawn);
+        }
+
+        player.health = player.maxHealth;
+        player.nextStepAt = this.world.now();
+        player.nextAttackAt = this.world.now();
+
+        // El objetivo del monstruo que lo mató deja de tener sentido: el jugador ya no
+        // está donde estaba, y seguir persiguiendo un recuerdo lo dejaría dando vueltas.
+        this.world.creatures.forEach((creature) => {
+            if (creature.target === player) {
+                creature.target = null;
+            }
+        });
+
+        /*
+         * Se avisa DESPUÉS de resucitarlo, y ese orden importa: quien escuche el aviso
+         * y mire al jugador tiene que verlo vivo y en el templo, no a cero de vida y en
+         * el sitio donde cayó. Un manejador que intente curarlo o moverlo se encontraría
+         * con un muerto, que es lo que se quiere evitar.
+         */
+        this.world.emit('onDeath', player, killer || null, dropped);
+        this.world.emit('onPlayerDeath', player, killer || null, dropped);
 
         return dropped;
     }

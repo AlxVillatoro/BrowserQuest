@@ -132,7 +132,10 @@ falta tocar el motor para añadir un hechizo, la arquitectura está mal.
 | Escritor de mapas, con ida y vuelta | hecho y probado |
 | Aspectos (outfits), con añadidos | hecho y probado |
 | Migración de esquema con datos dentro | hecho y probado |
+| Recoger, soltar e inventario | hecho y probado |
+| Muerte del jugador y reaparición | hecho y probado |
 | Importadores OTBM/OTB/DAT/SPR | pendiente |
+| NPCs y diálogo | pendiente |
 
 ---
 
@@ -490,6 +493,20 @@ resistencias elementales, muerte, botín, experiencia con la fórmula cúbica
 verificada, subida de nivel, eventos de criatura (`onKill`, `onDeath`,
 `onAdvance`), búsqueda de caminos y monstruos que ven, persiguen, atacan y vuelven
 a casa.
+
+Añadido después: **la muerte del jugador**. Antes, un jugador a cero de vida se
+quedaba en el mundo con la barra vacía y sin que pasara nada — el combate no tenía
+conclusión para él. Ahora pierde un porcentaje de experiencia, suelta el inventario
+**donde cayó** (no donde reaparece, que es lo que hace que ir a recuperarlo sea una
+decisión) y vuelve al templo con la vida llena. Las dos cosas se configuran, porque
+para un servidor de pruebas el castigo es molesto.
+
+Y **recoger y soltar**, que es lo que hace que el inventario exista de verdad. La
+regla que importa: **sólo se puede coger el objeto de más arriba de la pila**, y si no
+se puede coger, no se coge nada. Tiene una consecuencia que sorprende hasta que se
+entiende: una moneda debajo de una mesa no se puede recoger. Permitir coger de en
+medio sería más cómodo y rompería la única razón por la que el apilado importa para
+algo que no sea dibujar.
 
 La salvedad, dicha en voz alta: **la fórmula de daño no está verificada** contra el
 código de The Forgotten Server. El SISTEMA sí es fiel —intervalos, probabilidades,

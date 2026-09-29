@@ -258,6 +258,12 @@ class GameSession {
             case P.CLIENT.LOOK:
                 return this._handleLook(message[1], message[2], message[3]);
 
+            case P.CLIENT.PICKUP:
+                return this._handlePickup(message[1], message[2], message[3]);
+
+            case P.CLIENT.DROP:
+                return this._handleDrop(message[1]);
+
             case P.CLIENT.ATTACK:
                 return this._handleAttack(message[1]);
 
@@ -345,6 +351,19 @@ class GameSession {
         return this._send(P.message(P.SERVER.TEXT, 0, String(text)));
     }
 
+    /**
+     * Avisa al cliente de que su jugador ha muerto.
+     *
+     * Va aparte del mensaje de texto porque son dos cosas distintas: el texto explica qué
+     * ha pasado y esto le dice al cliente que puede reaccionar sin tener que interpretar
+     * una frase. Un cliente que quisiera poner una pantalla de muerte no debería tener que
+     * buscar la palabra "muerto" en un mensaje.
+     */
+    sendDeath(killerName, droppedCount) {
+        return this._send(P.message(P.SERVER.PLAYER_DEATH,
+            killerName || '', Number(droppedCount) || 0));
+    }
+
     /** Mirar un tile: describe lo que hay, para depurar y para el examen. */
     _handleLook(x, y, z) {
         const map = this.world.map;
@@ -375,8 +394,79 @@ class GameSession {
         return { handled: true, action: 'look', text: text };
     }
 
-    _handleAttack(creatureId) {
-        const target = this.world.getCreature(Number(creatureId));
+    /**
+     * Recoger lo que hay encima de una casilla.
+     *
+     * Se exige que la casilla esté AL LADO, y el motivo es de jugabilidad antes que de
+     * seguridad: recoger de lejos convertiría el inventario en algo que se llena sin
+     * moverse, y el mundo dejaría de importar. La comprobación de verdad la hace el mundo,
+     * que es quien conoce las reglas; aquí sólo se traduce el mensaje.
+     */
+    _handlePickup(x, y, z) {
+        const result = this.world.pickUpItem(this.player, x, y, z);
+
+        if (!result.ok) {
+            // Sólo se responde cuando hay algo que explicar. Recoger de una casilla vacía
+            // es normal y no merece un mensaje.
+            if (result.reason === 'tooFar' || result.reason === 'notPickupable') {
+                this.sendText(result.reason === 'tooFar'
+                    ? 'Esta demasiado lejos.'
+                    : 'Eso no se puede recoger.');
+            }
+            return { handled: true, action: 'pickup', picked: false, reason: result.reason };
+        }
+
+        // El inventario cambió, así que hay que decírselo al cliente: si no, el objeto
+        // desaparece del suelo y no aparece en ninguna parte.
+        this.sendText('Has recogido ' + this._itemLabel(result.item.typeId, result.item.count) +
+            (result.stacked ? ' (se suma a lo que ya llevabas)' : '') + '.');
+        this.sendInventory();
+
+        return { handled: true, action: 'pickup', picked: true, item: result.item };
+    }
+
+    /** Soltar un objeto del inventario. */
+    _handleDrop(index) {
+        const result = this.world.dropItem(this.player, index);
+
+        if (!result.ok) {
+            return { handled: true, action: 'drop', dropped: false, reason: result.reason };
+        }
+
+        this.sendText('Has soltado ' + this._itemLabel(result.item.typeId, result.item.count) + '.');
+        this.sendInventory();
+
+        return { handled: true, action: 'drop', dropped: true, item: result.item };
+    }
+
+    /** El nombre de un objeto con su cantidad, para los mensajes. */
+    _itemLabel(typeId, count) {
+        const definition = this.world.itemTypes.get(Number(typeId));
+        const name = definition ? definition.name : 'objeto ' + typeId;
+
+        if (count !== undefined && count !== 1) {
+            return count + ' ' + name;
+        }
+        return name;
+    }
+
+    /**
+     * Manda el inventario al cliente.
+     *
+     * Se manda ENTERO cada vez que cambia, en vez de mandar sólo lo que cambió. Un
+     * inventario son decenas de entradas, y calcular diferencias para ahorrar eso es
+     * mucho más código y una fuente de desincronizaciones entre lo que el jugador cree
+     * que lleva y lo que lleva de verdad.
+     */
+    sendInventory() {
+        const entries = this.world.inventoryOf(this.player)
+            .map((entry) => [entry.index, entry.typeId, entry.count, entry.name]);
+
+        return this._send(P.message(P.SERVER.INVENTORY, entries.length,
+            ...entries.reduce((flat, entry) => flat.concat(entry), [])));
+    }
+
+    _handleAttack(creatureId) {        const target = this.world.getCreature(Number(creatureId));
 
         if (!target || target.id === this.playerId) {
             return { handled: false, reason: 'badTarget' };

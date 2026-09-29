@@ -141,8 +141,39 @@
 
     #chat:focus { outline: none; border-color: #4a90d9; }
 
-    #status {
-        padding: 4px 10px;
+    #inventory-bar {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 5px 10px;
+        background: #0a0a10;
+        border-top: 1px solid #1a1a24;
+        font-size: 12px;
+        min-height: 30px;
+    }
+
+    #inventory-bar .label { color: #6a6a7a; }
+
+    #inventory { display: flex; gap: 6px; flex-wrap: wrap; }
+
+    #inventory .empty { color: #4a4a5a; font-style: italic; }
+
+    #inventory .slot {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 2px 8px;
+        background: #14141e;
+        border: 1px solid #26263a;
+        border-radius: 3px;
+        cursor: pointer;
+    }
+    #inventory .slot:hover { background: #3a2020; border-color: #6a3030; }
+    #inventory .slot .count { color: #ffd060; }
+    #inventory .slot .name { color: #c8c8d8; }
+    #inventory .slot em { color: #5a5a70; font-style: normal; font-size: 10px; }
+
+    #status {        padding: 4px 10px;
         background: #08080c;
         border-top: 1px solid #1e1e28;
         color: #8a8a9a;
@@ -212,6 +243,15 @@
         <span>decir:</span>
         <input id="chat" placeholder="pulsa Intro para escribir" autocomplete="off">
     </form>
+
+    <!--
+        El inventario. Las entradas las manda el motor; el cliente sólo las pinta. Un clic
+        en una suelta ese objeto en el suelo.
+    -->
+    <div id="inventory-bar">
+        <span class="label">llevas:</span>
+        <div id="inventory"><div class="empty">no llevas nada</div></div>
+    </div>
 
     <div id="status">sin conectar</div>
     <div id="diagnostics">esperando</div>

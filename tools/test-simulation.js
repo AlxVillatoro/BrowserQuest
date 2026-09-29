@@ -482,7 +482,104 @@ function main() {
     }
 
     // =======================================================================
-    section('7. Limpieza de tiles materializados');
+    section('7. Recoger y soltar');
+    // =======================================================================
+
+    {
+        const harness = buildWorld();
+        const world = harness.world;
+
+        // El mapa de ejemplo tiene 50 monedas en (11,12).
+        const tile = world.map.getTile(11, 12, 7);
+        check('el mapa tiene monedas que recoger',
+            tile && tile.downItems.length === 1 &&
+            tile.downItems[0].typeId === 3031 && tile.downItems[0].count === 50,
+            tile && tile.downItems.length
+                ? tile.downItems[0].count + ' monedas'
+                : 'no hay nada');
+
+        const player = world.createPlayer('Recogedor', { x: 11, y: 12, z: 7 });
+
+        const picked = world.pickUpItem(player, 11, 12, 7);
+
+        check('se recogen las monedas de la casilla',
+            picked.ok === true && picked.item.typeId === 3031 && picked.item.count === 50,
+            picked.ok ? picked.item.count + ' monedas' : picked.reason);
+
+        check('y aparecen en el inventario',
+            world.inventoryOf(player).length === 1 &&
+            world.inventoryOf(player)[0].count === 50 &&
+            world.inventoryOf(player)[0].name === 'gold coin',
+            JSON.stringify(world.inventoryOf(player)));
+
+        check('el tile queda vacio',
+            world.map.getTile(11, 12, 7).downItems.length === 0,
+            'los objetos de la pila son lo que se dibuja y lo que bloquea el paso');
+
+        check('y recoger otra vez dice que no hay nada',
+            world.pickUpItem(player, 11, 12, 7).reason === 'emptyTile',
+            'el suelo tambien es un objeto de la pila, pero no es algo que se recoja');
+
+        // --- Lo que NO se puede ---
+        check('no se recoge de lejos',
+            world.pickUpItem(player, 40, 40, 7).reason === 'tooFar',
+            'y lo dice ANTES que "aqui no hay nada", que es cierto y no explica nada');
+
+        check('no se recoge de otra planta',
+            world.pickUpItem(player, 11, 12, 8).reason === 'tooFar');
+
+        // El muro de (10,10): desde (11,11), que esta al lado.
+        world.teleportCreature(player, { x: 11, y: 11, z: 7 });
+        check('no se recoge un muro',
+            world.pickUpItem(player, 10, 11, 7).reason === 'notPickupable',
+            'hay cosas que estan en la pila y no se pueden coger');
+
+        // --- Soltar ---
+        const dropped = world.dropItem(player, 0);
+
+        check('se suelta lo que se lleva',
+            dropped.ok === true && world.inventoryOf(player).length === 0,
+            dropped.ok ? 'se solto ' + dropped.item.count + ' monedas' : dropped.reason);
+
+        // Se busca la moneda y no se cuenta lo que hay: (11,11) ya tenía la palanca del
+        // mapa de ejemplo, así que contar daría dos y parecería un fallo de soltar.
+        const droppedTile = world.map.getTile(11, 11, 7);
+        const onGround = droppedTile
+            ? droppedTile.downItems.concat(droppedTile.topItems)
+                .find((item) => item.typeId === 3031)
+            : null;
+
+        check('y aparece en el suelo, en la casilla del jugador',
+            onGround !== undefined && onGround !== null && onGround.count === 50,
+            onGround
+                ? onGround.count + ' monedas en ' + JSON.stringify(player.position)
+                : 'no aparece en el suelo');
+
+        check('soltar una ranura que no existe se rechaza',
+            world.dropItem(player, 5).reason === 'badSlot');
+
+        // --- Apilar ---
+        // Lo que hace que cien monedas recogidas de una en una sean UNA entrada y no
+        // cien. Sin esto el inventario crece sin limite al matar monstruos.
+        world.teleportCreature(player, { x: 11, y: 12, z: 7 });
+        world.createItem(3031, 10, { x: 11, y: 12, z: 7 });
+        world.pickUpItem(player, 11, 12, 7);
+        world.createItem(3031, 5, { x: 11, y: 12, z: 7 });
+        const second = world.pickUpItem(player, 11, 12, 7);
+
+        check('las monedas se apilan en una sola entrada',
+            second.ok === true && second.stacked === true &&
+            world.inventoryOf(player).length === 1 &&
+            world.inventoryOf(player)[0].count === 15,
+            world.inventoryOf(player)[0].count + ' monedas en una entrada');
+
+        check('y las posiciones del inventario siguen siendo correlativas',
+            world.inventoryOf(player).every((entry, index) => entry.index === index),
+            'si no, el "soltar el 3" del jugador apuntaria a otro sitio del que ve');
+    }
+
+    // =======================================================================
+    section('8. Limpieza de tiles materializados');
     // =======================================================================
 
     {

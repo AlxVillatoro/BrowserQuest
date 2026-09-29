@@ -495,6 +495,33 @@ function createEngine(options) {
         api.sessions.broadcastSay(creature, text);
     });
 
+    /*
+     * La muerte de un jugador tiene que LLEGARLE.
+     *
+     * Sin esto, morir era un teletransporte silencioso al templo con la vida llena y las
+     * cosas tiradas en otro sitio: desde dentro del juego, indistinguible de un fallo.
+     * El aviso va por dos caminos porque son dos cosas distintas: el mensaje explica qué
+     * ha pasado, y el mensaje de protocolo le dice al cliente que puede reaccionar (una
+     * pantalla, un sonido) sin tener que interpretar el texto.
+     */
+    world.on('onPlayerDeath', (player, killer, dropped) => {
+        const killerName = killer && killer.name ? killer.name : null;
+
+        world.sendTextMessage(player.id, killerName
+            ? 'Has muerto a manos de ' + killerName + '.'
+            : 'Has muerto.');
+
+        if (dropped.length > 0) {
+            world.sendTextMessage(player.id, 'Has soltado ' + dropped.length +
+                ' cosa(s) donde caiste. Sigues en el templo.');
+        }
+
+        const session = api.sessions.get(player.id);
+        if (session) {
+            session.sendDeath(killerName, dropped.length);
+        }
+    });
+
     /** Crea una sesión con un transporte ya resuelto. Se registra al entrar. */
     api.createSession = (send) => api.sessions.createSession(send);
 

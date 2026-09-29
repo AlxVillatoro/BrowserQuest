@@ -114,6 +114,19 @@ module.exports = {
     autosaveIntervalMs: 60000,
 
     // -----------------------------------------------------------------------
+    // Muerte del jugador
+    // -----------------------------------------------------------------------
+    //
+    // Sin castigo, morir no cuesta nada y el combate deja de tener tensión. Estas dos
+    // son las que hacen que importe no morir, y son las de Tibia.
+    //
+    // El inventario se suelta en el sitio donde cayó, lo que convierte llevar cosas
+    // encima en una decisión. Para un servidor de pruebas es molesto, así que se puede
+    // apagar.
+    deathLosePercent: 10,
+    deathDropInventory: true,
+
+    // -----------------------------------------------------------------------
     // Scripting
     // -----------------------------------------------------------------------
     // Interruptor maestro. Con esto en false el motor arranca sin cargar ningún

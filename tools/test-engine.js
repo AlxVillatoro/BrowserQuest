@@ -124,17 +124,17 @@ function main() {
     // -----------------------------------------------------------------------
 
     check('los modulos se cargan sin paso manual de registro',
-        engine.stats.contentFiles === 6 && engine.stats.contentDefinitions === 8,
+        engine.stats.contentFiles === 6 && engine.stats.contentDefinitions === 9,
         engine.stats.contentFiles + ' modulos, ' + engine.stats.contentDefinitions + ' definiciones');
 
     check('definiciones por tipo',
         engine.stats.byKind.action === 1 && engine.stats.byKind.movement === 2 &&
-        engine.stats.byKind.talkaction === 3 && engine.stats.byKind.monster === 1 &&
+        engine.stats.byKind.talkaction === 4 && engine.stats.byKind.monster === 1 &&
         engine.stats.byKind.event === 1,
         JSON.stringify(engine.stats.byKind));
 
     check('un modulo puede declarar varios registros con un array',
-        engine.stats.talkActions === 3, '/pos, /item y /outfit, los tres en commands.js');
+        engine.stats.talkActions === 4, '/pos, /item, /outfit y /i, los cuatro en commands.js');
 
     // --- Aspectos ---
 
@@ -388,7 +388,7 @@ function main() {
         before.definitions + ' definiciones antes y despues');
 
     check('recargar devuelve el contenido a su estado de arranque',
-        engine.registry.actions.size === 1 && engine.registry.talkActions.length === 3,
+        engine.registry.actions.size === 1 && engine.registry.talkActions.length === 4,
         'las definiciones de prueba (que no son ficheros) desaparecen, como en un /reload real');
 
     check('recargar vuelve a dejar el contenido funcional',
@@ -428,7 +428,51 @@ function main() {
         globalThis.Game.getMapInfo() && globalThis.Game.getMapInfo().name === 'sample');
 
     // -----------------------------------------------------------------------
-    section('10. Aislamiento');
+    section('10. El inventario y su comando');
+    // -----------------------------------------------------------------------
+
+    {
+        const bagPlayer = world.createPlayer('Cargado', { x: 40, y: 40, z: 7 });
+
+        engine.dispatchTalkAction('/i', { playerId: bagPlayer.id, type: 1 });
+        check('sin nada, /i lo dice',
+            /No llevas nada/.test(lastMessage(world, bagPlayer.id)),
+            '"' + lastMessage(world, bagPlayer.id) + '"');
+
+        // Se le pone dinero en su casilla y lo recoge, que es el camino de verdad.
+        world.createItem(3031, 12, { x: 40, y: 40, z: 7 });
+        world.pickUpItem(bagPlayer, 40, 40, 7);
+
+        engine.dispatchTalkAction('/i', { playerId: bagPlayer.id, type: 1 });
+
+        check('/i lista lo que lleva',
+            /12x gold coin/.test(lastMessage(world, bagPlayer.id)),
+            '"' + lastMessage(world, bagPlayer.id) + '"');
+
+        // Y la API del envoltorio tiene que ver lo mismo: si el comando y la API
+        // discreparan, uno de los dos estaría mirando otro sitio.
+        const bagWrapper = engine.registry.entities.player(bagPlayer.id);
+        const inventory = bagWrapper.getInventory();
+
+        check('y la API del envoltorio lo ve igual',
+            inventory.length === 1 && inventory[0].count === 12 &&
+            inventory[0].name === 'gold coin' && bagWrapper.getItemCount() === 1,
+            JSON.stringify(inventory));
+
+        check('la API devuelve una COPIA, no la lista de dentro',
+            (() => {
+                const first = bagWrapper.getInventory();
+                first.push({ index: 99, typeId: 1, count: 1, name: 'inventado' });
+                return bagWrapper.getItemCount() === 1;
+            })(),
+            'si devolviera la de verdad, un modulo podria meter cosas sin pasar por ' +
+            'ninguna regla');
+
+        world.removePlayer(bagPlayer.id);
+    }
+
+    // -----------------------------------------------------------------------
+    section('11. Aislamiento');
     // -----------------------------------------------------------------------
 
     // Se comparan los campos que importan, no el objeto entero. El grafo del mundo

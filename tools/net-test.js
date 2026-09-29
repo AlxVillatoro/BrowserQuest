@@ -384,7 +384,78 @@ async function main() {
     }
 
     // =======================================================================
-    section('7. Desconexion');
+    section('7. Recoger, soltar y el inventario');
+    // =======================================================================
+
+    {
+        const session = engine.sessions.get(loginOk[1]);
+
+        // Se le pone una moneda en su propia casilla, desde el servidor, que es lo que
+        // haria el botin de un monstruo.
+        const position = session.player.position;
+        engine.world.createItem(3031, 25, {
+            x: position.x, y: position.y, z: position.z
+        });
+
+        client.received.length = 0;
+        client.send([P.CLIENT.PICKUP, position.x, position.y, position.z]);
+        await sleep(300);
+
+        const inventory = client.received.filter((m) => m[0] === P.SERVER.INVENTORY).pop();
+
+        check('recoger manda el inventario al cliente',
+            inventory !== undefined &&
+            inventory[P.INVENTORY_FIELD.COUNT] === 1 &&
+            inventory[P.INVENTORY_FIELD.ENTRIES + 2] === 25,
+            inventory
+                ? inventory[P.INVENTORY_FIELD.ENTRIES + 2] + 'x ' +
+                    inventory[P.INVENTORY_FIELD.ENTRIES + 3]
+                : 'no llego el inventario');
+
+        check('y lo confirma con un mensaje',
+            /Has recogido/.test((client.received.filter((m) => m[0] === P.SERVER.TEXT)
+                .pop() || [])[2] || ''),
+            '"' + ((client.received.filter((m) => m[0] === P.SERVER.TEXT).pop() || [])[2]
+                || '') + '"');
+
+        check('el objeto ya no esta en el suelo',
+            engine.world.map.getTile(position.x, position.y, position.z)
+                .downItems.concat(
+                    engine.world.map.getTile(position.x, position.y, position.z).topItems)
+                .filter((item) => item.typeId === 3031).length === 0);
+
+        // --- Soltar ---
+        client.received.length = 0;
+        client.send([P.CLIENT.DROP, 0]);
+        await sleep(300);
+
+        const afterDrop = client.received.filter((m) => m[0] === P.SERVER.INVENTORY).pop();
+
+        check('soltar deja el inventario vacio y lo dice',
+            afterDrop !== undefined && afterDrop[P.INVENTORY_FIELD.COUNT] === 0,
+            afterDrop ? 'quedan ' + afterDrop[P.INVENTORY_FIELD.COUNT] + ' cosa(s)' : 'no llego');
+
+        // --- Lo que tiene que rechazar ---
+        client.received.length = 0;
+        client.send([P.CLIENT.PICKUP, 5, 5, 7]);
+        await sleep(250);
+
+        check('recoger de lejos se rechaza y se explica',
+            /demasiado lejos/.test((client.received.filter((m) => m[0] === P.SERVER.TEXT)
+                .pop() || [])[2] || ''),
+            '"' + ((client.received.filter((m) => m[0] === P.SERVER.TEXT).pop() || [])[2]
+                || '') + '"');
+
+        const inventoryAfterFar = client.received
+            .filter((m) => m[0] === P.SERVER.INVENTORY).length;
+
+        check('y no manda el inventario, porque no ha cambiado',
+            inventoryAfterFar === 0,
+            'mandarlo sin que cambie seria ruido');
+    }
+
+    // =======================================================================
+    section('8. Desconexion');
     // =======================================================================
 
     {
@@ -409,7 +480,7 @@ async function main() {
     }
 
     // =======================================================================
-    section('8. Cierre ordenado');
+    section('9. Cierre ordenado');
     // =======================================================================
 
     {

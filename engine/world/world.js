@@ -83,6 +83,7 @@ class World {
             onCreatureAppear: [],    // (creature)
             onCreatureDisappear: [], // (creature)
             onMonsterDeath: [],      // (monster, killer)
+            onPlayerDeath: [],       // (player, killer, dropped)
             onTextMessage: [],       // (player, text) privado, para uno
             onCreatureSay: []        // (creature, text) en voz alta, para quien oiga
         };
@@ -582,6 +583,185 @@ class World {
 
     getItem(instanceId) {
         return this.items.get(Number(instanceId)) || null;
+    }
+
+    // =======================================================================
+    // El inventario
+    // =======================================================================
+
+    /**
+     * Recoge el objeto que hay encima de una casilla.
+     *
+     * SÓLO SE PUEDE COGER EL DE MÁS ARRIBA, y si no se puede coger, no se coge nada. Es
+     * la regla de Tibia y tiene una consecuencia que sorprende hasta que se entiende: una
+     * moneda debajo de una mesa NO se puede recoger, porque la mesa está por encima. Hay
+     * que quitar la mesa primero. Permitir coger de en medio sería más cómodo y rompería
+     * la única razón por la que el apilado importa para algo que no sea dibujar.
+     *
+     * @returns {{ok: boolean, reason?: string, item?: Object, stacked?: boolean}}
+     */
+    pickUpItem(creature, x, y, z) {
+        if (!this.map) {
+            return { ok: false, reason: 'noMap' };
+        }
+
+        /*
+         * LA DISTANCIA SE COMPRUEBA ANTES QUE EL TILE, y el orden importa para el
+         * mensaje: si se mira primero el tile, recoger de la otra punta del mapa dice
+         * "aquí no hay nada", que es cierto y no explica nada. Sin esta comprobación,
+         * además, se podría recoger del otro lado del mapa mandando coordenadas, que es
+         * la clase de agujero que un cliente modificado encuentra el primer día.
+         */
+        const distance = Math.max(
+            Math.abs(creature.position.x - Number(x)),
+            Math.abs(creature.position.y - Number(y)));
+
+        if (creature.position.z !== Number(z) || distance > 1) {
+            return { ok: false, reason: 'tooFar' };
+        }
+
+        const tile = this.map.getTile(Number(x), Number(y), Number(z));
+        if (!tile) {
+            return { ok: false, reason: 'emptyTile' };
+        }
+
+        const stack = tile.getItems();
+        const top = stack[stack.length - 1];
+
+        /*
+         * Si lo de más arriba es el SUELO, la casilla está vacía a efectos de recoger.
+         *
+         * El suelo es un objeto más de la pila, así que sin esta comprobación el motivo
+         * sería "no se puede coger", que es verdad y es inútil: lo que quiere saber quien
+         * lo intenta es que ahí no hay nada. Decir el motivo de verdad es la diferencia
+         * entre un mensaje que orienta y uno que confunde.
+         */
+        if (!top || top === tile.ground) {
+            return { ok: false, reason: 'emptyTile' };
+        }
+        if (!top.hasFlag('pickupable')) {
+            return { ok: false, reason: 'notPickupable' };
+        }
+
+        if (!(creature.inventory instanceof Array)) {
+            creature.inventory = [];
+        }
+
+        /*
+         * Si el objeto se apila y ya hay uno igual, se suma a su cantidad.
+         *
+         * Es lo que espera cualquiera: cien monedas recogidas de una en una tienen que
+         * acabar siendo UNA entrada de cien, no cien entradas de una. También es lo que
+         * hace que el inventario no crezca sin límite al matar monstruos.
+         *
+         * PENDIENTE: el tope por pila (en Tibia, 100 monedas) necesita un `maxCount` en la
+         * definición del objeto, que `items.xml` todavía no declara.
+         */
+        let stacked = false;
+
+        if (top.hasFlag('stackable')) {
+            const existing = creature.inventory.find((entry) =>
+                entry.typeId === top.typeId && entry.slot === 'backpack');
+
+            if (existing) {
+                existing.count += Math.max(1, top.count);
+                stacked = true;
+            }
+        }
+
+        if (!stacked) {
+            creature.inventory.push({
+                slot: 'backpack',
+                position: creature.inventory.length,
+                typeId: top.typeId,
+                count: Math.max(1, top.count),
+                attributes: top.attributes && Object.keys(top.attributes).length > 0
+                    ? { ...top.attributes }
+                    : null
+            });
+        }
+
+        // Se quita del tile Y de la tabla de objetos sueltos, si estaba en ella. Las dos
+        // cosas son necesarias: el tile es lo que se dibuja y lo que bloquea el paso, y la
+        // tabla es lo que permite encontrar el objeto por su identificador. Quitar sólo una
+        // deja el objeto en el sitio equivocado.
+        tile.removeItem(top);
+
+        if (top.instanceId && this.items.has(top.instanceId)) {
+            this.items.delete(top.instanceId);
+        }
+
+        return { ok: true, item: top, stacked: stacked };
+    }
+
+    /**
+     * Suelta un objeto del inventario en la casilla donde está la criatura.
+     *
+     * @param {Creature} creature
+     * @param {number} index posición en el inventario
+     * @returns {{ok: boolean, reason?: string, item?: Object}}
+     */
+    dropItem(creature, index) {
+        const inventory = creature.inventory;
+        const slot = Number(index);
+
+        if (!(inventory instanceof Array) || slot < 0 || slot >= inventory.length) {
+            return { ok: false, reason: 'badSlot' };
+        }
+
+        const entry = inventory[slot];
+        const definition = this.itemTypes.get(entry.typeId);
+
+        if (!definition) {
+            return { ok: false, reason: 'unknownItem' };
+        }
+
+        const item = new Item(definition, {
+            count: entry.count,
+            attributes: entry.attributes || null
+        });
+        item.instanceId = this._allocateItemId();
+        this.items.set(item.instanceId, item);
+
+        if (!this.addItemToTile(item, creature.position)) {
+            // Si no se pudo poner en el suelo, se deshace todo: dejar el objeto en la
+            // tabla sin tile sería un objeto invisible que nadie puede recoger.
+            this.items.delete(item.instanceId);
+            return { ok: false, reason: 'noTile' };
+        }
+
+        inventory.splice(slot, 1);
+        this._reindexInventory(inventory);
+
+        return { ok: true, item: item };
+    }
+
+    /**
+     * Renumera las posiciones del inventario.
+     *
+     * Se hace al quitar algo para que las posiciones sigan siendo correlativas. Si no,
+     * al soltar el objeto 2 de 5 quedaría un hueco, y el `/soltar 3` del jugador
+     * apuntaría a un sitio distinto del que ve.
+     */
+    _reindexInventory(inventory) {
+        inventory.forEach((entry, index) => {
+            entry.position = index;
+        });
+        return inventory;
+    }
+
+    /** Todo lo que lleva encima una criatura, para el comando de listar. */
+    inventoryOf(creature) {
+        return (creature.inventory instanceof Array ? creature.inventory : [])
+            .map((entry, index) => {
+                const definition = this.itemTypes.get(entry.typeId);
+                return {
+                    index: index,
+                    typeId: entry.typeId,
+                    count: entry.count,
+                    name: definition ? definition.name : 'objeto ' + entry.typeId
+                };
+            });
     }
 
     // =======================================================================

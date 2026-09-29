@@ -52,11 +52,22 @@ Las flechas o WASD mueven (con dos teclas a la vez, en diagonal), Intro abre el
 chat, Espacio mira el tile donde pisas, y un clic ataca a la criatura que haya
 debajo o mira el suelo.
 
-Comandos de chat: `/pos` (dónde estás), `/item <id>` (crear un objeto) y
-`/outfit <tipo> [cabeza] [cuerpo] [piernas] [pies] [añadidos]`, por ejemplo
-`/outfit 131 100 50 20 115 3`. Los colores son **índices de una paleta de 133** que
-tiene el cliente, no valores de color: el motor manda números y el cliente los
-resuelve, igual que con los sprites de los objetos.
+Comandos de chat: `/pos` (dónde estás), `/i` (qué llevas), `/item <id>` (crear un
+objeto) y `/outfit <tipo> [cabeza] [cuerpo] [piernas] [pies] [añadidos]`, por
+ejemplo `/outfit 131 100 50 20 115 3`. Los colores son **índices de una paleta de
+133** que tiene el cliente, no valores de color: el motor manda números y el cliente
+los resuelve, igual que con los sprites de los objetos.
+
+**Clic derecho para recoger** lo que haya encima de una casilla, y un clic en la
+barra de abajo para soltarlo. El botón derecho y no el izquierdo por una razón: el
+cliente todavía no conoce las banderas de los objetos —no viajan en el protocolo—, así
+que con el izquierdo pulsar una pared para mirarla intentaría recogerla. Un cliente de
+verdad sí las conoce, porque las saca de su propio `.dat`.
+
+Al morir pierdes un 10% de la experiencia y sueltas todo lo que llevabas donde caíste,
+y reapareces en el templo. Las dos cosas se configuran en `config.js`
+(`deathLosePercent` y `deathDropInventory`), porque para un servidor de pruebas el
+castigo es molesto.
 
 Para apuntar a otro motor sin tocar el código:
 `.../avillatoro/index.html?ws=otra-maquina:8080`.

@@ -365,7 +365,7 @@ class ViewManager {
 
     /** Mensaje de bienvenida: los datos del jugador y su posición. */
     loginMessages(player) {
-        return [
+        const messages = [
             P.message(P.SERVER.HELLO, P.PROTOCOL_VERSION,
                 this.world.map ? this.world.map.width : 0,
                 this.world.map ? this.world.map.height : 0,
@@ -377,6 +377,17 @@ class ViewManager {
                 player.level, player.experience || 0,
                 player.vocation || 'None')
         ];
+
+        // El inventario va con la bienvenida: un jugador que vuelve tiene que ver lo que
+        // llevaba ANTES de que pase nada, y si se mandara sólo al cambiar no lo vería
+        // hasta tocar algo.
+        const entries = this.world.inventoryOf(player)
+            .map((entry) => [entry.index, entry.typeId, entry.count, entry.name]);
+
+        messages.push(P.message(P.SERVER.INVENTORY, entries.length,
+            ...entries.reduce((flat, entry) => flat.concat(entry), [])));
+
+        return messages;
     }
 
     /** El movimiento de una criatura, para enviarlo con su duración. */

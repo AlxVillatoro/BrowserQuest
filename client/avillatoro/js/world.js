@@ -30,7 +30,8 @@ import {
     TILE_FIELD as T,
     MOVE_FIELD as M,
     LOGIN_FIELD as L,
-    UPDATE_FIELD as U
+    UPDATE_FIELD as U,
+    INVENTORY_FIELD as I
 } from '../../../shared/js/protocol.mjs';
 
 /**
@@ -86,6 +87,19 @@ export class ClientWorld {
 
         this.playerId = null;
         this.player = null;
+
+        /**
+         * Lo que lleva encima, tal y como se lo ha dicho el motor.
+         *
+         * El cliente NO lleva la cuenta por su cuenta: recibe el inventario entero cada
+         * vez que cambia. Calcularlo aquí a partir de lo que va recogiendo sería más
+         * rápido y se desincronizaría en cuanto una operación fallara, que es
+         * exactamente cuando el jugador más necesita saber qué tiene.
+         */
+        this.inventory = [];
+
+        /** Cuántas veces ha muerto en esta sesión. */
+        this.deaths = 0;
 
         /** El motivo del último rechazo de entrada, o null. */
         this.loginError = null;
@@ -218,6 +232,34 @@ export class ClientWorld {
                     this.creatures.clear();
                     this.lastFloorChange = message[1];
                     events.push({ type: 'floorChange', z: message[1] });
+                    break;
+
+                case P.SERVER.INVENTORY: {
+                    const count = message[I.COUNT];
+                    const entries = [];
+
+                    for (let index = 0; index < count; index += 1) {
+                        const base = I.ENTRIES + index * I.STRIDE;
+                        entries.push({
+                            index: message[base],
+                            typeId: message[base + 1],
+                            count: message[base + 2],
+                            name: message[base + 3]
+                        });
+                    }
+
+                    this.inventory = entries;
+                    events.push({ type: 'inventory', entries: entries });
+                    break;
+                }
+
+                case P.SERVER.PLAYER_DEATH:
+                    this.deaths += 1;
+                    events.push({
+                        type: 'death',
+                        killer: message[1],
+                        dropped: message[2]
+                    });
                     break;
 
                 case P.SERVER.PLAYER_STATS:

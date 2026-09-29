@@ -1,7 +1,7 @@
 'use strict';
 
 /**
- * Comandos de chat: /pos, /item y /outfit.
+ * Comandos de chat: /pos, /item, /outfit y /i.
  *
  * Este archivo exporta un ARRAY, que es la forma de declarar varios registros en
  * el mismo módulo. Es lo que sustituye a llamar a `:register()` dos veces.
@@ -114,6 +114,41 @@ module.exports = [
                 ', colores ' + applied.lookHead + ' ' + applied.lookBody + ' ' +
                 applied.lookLegs + ' ' + applied.lookFeet +
                 ', anadidos ' + applied.lookAddons);
+
+            return true;
+        }
+    },
+
+    {
+        type: 'talkaction',
+        words: '/i',
+
+        /**
+         * Lista lo que lleva encima.
+         *
+         * El inventario también se ve en la barra de abajo del cliente, así que este
+         * comando parece redundante. No lo es: la barra sólo funciona si el cliente está
+         * funcionando, y este comando va por el mismo camino que todo lo demás, así que
+         * sirve para comprobar desde una consola que lo que el jugador lleva es lo que el
+         * motor cree que lleva. Cuando los dos no coinciden, poder preguntárselo al motor
+         * por un camino distinto es la diferencia entre encontrar el fallo y suponerlo.
+         */
+        onSay(player, words, param, type) {
+            const items = player.getInventory();
+
+            if (items.length === 0) {
+                player.sendTextMessage('No llevas nada.');
+                return true;
+            }
+
+            player.sendTextMessage('Llevas ' + items.length + ' cosa(s):');
+
+            items.forEach((entry) => {
+                player.sendTextMessage(
+                    '  ' + entry.index + '. ' +
+                    (entry.count > 1 ? entry.count + 'x ' : '') +
+                    entry.name + ' (id ' + entry.typeId + ')');
+            });
 
             return true;
         }

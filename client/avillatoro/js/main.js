@@ -112,7 +112,45 @@ class Game {
                 // una contraseña mal escrita dejaba al jugador mirando una pantalla
                 // en negro sin saber qué había pasado.
                 this._showLoginError(event.error);
+            } else if (event.type === 'inventory') {
+                this._updateInventory(event.entries);
+            } else if (event.type === 'death') {
+                // El motor avisa por separado del texto, así que el cliente puede
+                // reaccionar sin tener que interpretar el mensaje. Aquí basta con
+                // centrar la cámara en el templo: el muñeco ya está allí.
+                this._setStatus('has muerto' +
+                    (event.killer ? ' a manos de ' + event.killer : '') +
+                    (event.dropped > 0 ? '; soltaste ' + event.dropped + ' cosa(s)' : ''));
             }
+        });
+    }
+
+    /** Pinta la lista de lo que lleva el jugador. */
+    _updateInventory(entries) {
+        const box = document.getElementById('inventory');
+        if (!box) {
+            return;
+        }
+
+        if (entries.length === 0) {
+            box.innerHTML = '<div class="empty">no llevas nada</div>';
+            return;
+        }
+
+        box.innerHTML = entries.map((entry) =>
+            '<div class="slot" data-index="' + entry.index + '">' +
+            '<span class="count">' + (entry.count > 1 ? entry.count + 'x' : '') + '</span>' +
+            '<span class="name">' + entry.name + '</span>' +
+            '<em>' + entry.typeId + '</em>' +
+            '</div>').join('');
+
+        // Un clic en una entrada la suelta en el suelo. Es la forma de vaciar el
+        // inventario sin escribir un comando con el número de la ranura, que es lo que
+        // nadie recuerda.
+        box.querySelectorAll('.slot').forEach((slot) => {
+            slot.addEventListener('click', () => {
+                this.drop(Number(slot.dataset.index));
+            });
         });
     }
 
@@ -171,6 +209,18 @@ class Game {
     look(x, y, z) {
         if (this.connection) {
             this.connection.send([CLIENT.LOOK, x, y, z]);
+        }
+    }
+
+    pickUp(x, y, z) {
+        if (this.connection) {
+            this.connection.send([CLIENT.PICKUP, x, y, z]);
+        }
+    }
+
+    drop(index) {
+        if (this.connection) {
+            this.connection.send([CLIENT.DROP, index]);
         }
     }
 
@@ -464,6 +514,29 @@ function boot() {
         } else {
             game.look(target.x, target.y, target.z);
         }
+    });
+
+    /*
+     * EL BOTÓN DERECHO RECOGE, y no el izquierdo, por una razón que conviene saber.
+     *
+     * Recoger es "coge el objeto de más arriba de esa casilla", y sólo el MOTOR sabe cuál
+     * es el de más arriba y si se puede coger: el cliente no conoce las banderas de los
+     * objetos, porque no viajan en el protocolo. Con el botón izquierdo, pulsar una pared
+     * para mirarla intentaría recogerla y respondería "eso no se puede recoger", que es
+     * cierto y sobra.
+     *
+     * Un cliente de verdad SÍ conoce esas banderas: las saca de su propio `.dat`, igual
+     * que saca los sprites. Cuando exista esa lectura, el botón izquierdo podrá recoger
+     * directamente y esto se simplificará.
+     */
+    canvas.addEventListener('contextmenu', (event) => {
+        event.preventDefault();
+
+        const rect = canvas.getBoundingClientRect();
+        const target = game.camera.screenToWorld(
+            event.clientX - rect.left, event.clientY - rect.top, game.camera.z);
+
+        game.pickUp(target.x, target.y, target.z);
     });
 
     nameInput.focus();

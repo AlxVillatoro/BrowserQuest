@@ -162,6 +162,41 @@ class PlayerWrapper extends CreatureWrapper {
     }
 
     // -----------------------------------------------------------------------
+    // Inventario
+    // -----------------------------------------------------------------------
+
+    /**
+     * Lo que lleva encima, como lista.
+     *
+     * Se devuelve COPIADO y no la lista de dentro: si se devolviera la de verdad, un
+     * módulo podría meter y sacar cosas del inventario sin pasar por ninguna regla, y
+     * entonces el peso, el espacio y los topes de pila dejarían de poder comprobarse en
+     * un solo sitio.
+     */
+    getInventory() {
+        return this.world.inventoryOf(this.world.getPlayer(this.id) ||
+            this.world.getCreature(this.id));
+    }
+
+    /** Cuántas cosas lleva. */
+    getItemCount() {
+        return this.getInventory().length;
+    }
+
+    /**
+     * Suelta un objeto, por su posición en la lista.
+     *
+     * @returns {{ok: boolean, reason?: string}}
+     */
+    dropItem(index) {
+        const player = this.world.getPlayer(this.id);
+        if (!player) {
+            return { ok: false, reason: 'no existe el jugador' };
+        }
+        return this.world.dropItem(player, index);
+    }
+
+    // -----------------------------------------------------------------------
     // Aspecto
     // -----------------------------------------------------------------------
 

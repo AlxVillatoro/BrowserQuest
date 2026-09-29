@@ -625,9 +625,136 @@ function main() {
     }
 
     // =======================================================================
+    section('9. La muerte del jugador');
+    // =======================================================================
+
+    {
+        // El motor se configura con lo que cuesta morir. Sin castigo, morir no cuesta
+        // nada y el combate deja de tener tensión.
+        const harness = buildWorld();
+        harness.combat.config = {
+            experienceStages: [{ minlevel: 1, maxlevel: 0, multiplier: 1 }],
+            healthPerLevel: 5,
+            deathLosePercent: 10,
+            deathDropInventory: true
+        };
+
+        const deaths = [];
+        harness.world.on('onPlayerDeath', (player, killer, dropped) => {
+            deaths.push({
+                name: player.name,
+                health: player.health,
+                position: player.position.toString(),
+                dropped: dropped.length
+            });
+        });
+
+        const hero = harness.world.createPlayer('Mortals', { x: 40, y: 40, z: 7 });
+
+        // El nivel y la experiencia tienen que ser COHERENTES entre si. La primera
+        // version los puso a mano —nivel 30 con un millon de experiencia, que es la del
+        // 39— y al recalcular el nivel desde la experiencia subia en vez de bajar. La
+        // prueba estaba midiendo su propio dato inventado.
+        hero.level = 30;
+        hero.experience = Experience.experienceForLevel(30);
+        hero.health = 100;
+        hero.maxHealth = 500;
+
+        hero.inventory.push({ slot: 'backpack', position: 0, typeId: 3031, count: 120 });
+        hero.inventory.push({ slot: 'hand', position: 1, typeId: 2400, count: 1 });
+
+        const dragon = harness.world.createMonster('Dragon', { x: 41, y: 40, z: 7 });
+        dragon.target = hero;
+
+        const before = {
+            experience: hero.experience,
+            level: hero.level,
+            inventory: hero.inventory.length
+        };
+
+        const result = harness.combat.applyDamage(hero, 99999, { attacker: dragon });
+
+        check('la muerte de un jugador se detecta',
+            result.killed === true && hero.isDead() === false,
+            'isDead() es false porque YA ha resucitado: el motor no lo deja muerto');
+
+        check('pierde un 10% de la experiencia',
+            hero.experience === Math.floor(before.experience * 0.9),
+            before.experience + ' -> ' + hero.experience + ' (-' +
+            (before.experience - hero.experience) + ')');
+
+        check('y el nivel se recalcula con la experiencia que le queda',
+            hero.level === Experience.levelForExperience(hero.experience, 1) &&
+            hero.level < before.level,
+            'nivel ' + before.level + ' -> ' + hero.level);
+
+        check('reaparece en el templo',
+            hero.position.x === 40 && hero.position.y === 40 && hero.position.z === 7,
+            'en ' + hero.position + ' (el waypoint `temple` del mapa)');
+
+        check('con la vida llena',
+            hero.health === hero.maxHealth && hero.health === 500,
+            hero.health + '/' + hero.maxHealth);
+
+        check('y suelta TODO el inventario',
+            hero.inventory.length === 0 &&
+            result.loot.length === before.inventory,
+            before.inventory + ' cosa(s) al suelo, ' + hero.inventory.length + ' en el inventario');
+
+        check('lo soltado cae donde murio, no donde reaparece',
+            result.loot.every((item) =>
+                item.position && item.position.x === 40 && item.position.y === 40),
+            'el jugador murio en (40,40) y reaparece en (40,40) porque el templo del ' +
+            'mapa de ejemplo esta ahi; lo que importa es que se suelta ANTES de ' +
+            'moverse, que es lo que hace que ir a recuperarlo sea una decision');
+
+        check('el monstruo que lo mato deja de perseguirlo',
+            dragon.target === null,
+            'seguir persiguiendo a alguien que ya no esta ahi lo dejaria dando vueltas');
+
+        check('y se avisa de la muerte, ya resucitado',
+            deaths.length === 1 && deaths[0].health === 500 &&
+            deaths[0].dropped === before.inventory,
+            JSON.stringify(deaths[0]));
+
+        // La estadistica de muertes causadas NO cuenta esta: que a uno le maten no es
+        // una muerte que haya causado.
+        check('la estadistica de muertes causadas no cuenta la propia',
+            harness.combat.stats.kills === 0,
+            harness.combat.stats.kills + ' muertes causadas');
+    }
+
+    {
+        // Sin castigo configurado, morir solo devuelve al templo.
+        const harness = buildWorld();
+        harness.combat.config = {
+            experienceStages: [],
+            healthPerLevel: 5,
+            deathLosePercent: 0,
+            deathDropInventory: false
+        };
+
+        const hero = harness.world.createPlayer('Blando', { x: 40, y: 40, z: 7 });
+        hero.experience = 5000;
+        hero.inventory.push({ slot: 'hand', position: 0, typeId: 2400, count: 1 });
+
+        const kept = hero.experience;
+
+        harness.combat.handlePlayerDeath(hero, null);
+
+        check('con el castigo apagado no se pierde experiencia ni inventario',
+            hero.experience === kept && hero.inventory.length === 1,
+            'util para un servidor de pruebas, y por eso es configurable');
+
+        check('pero sigue reapareciendo vivo',
+            hero.health === hero.maxHealth && hero.position.z === 7,
+            hero.health + '/' + hero.maxHealth + ' en ' + hero.position);
+    }
+
+    // =======================================================================
     console.log('');
     if (failures === 0) {
-        console.log('\u001b[32mTodo OK\u001b[0m — el mundo pelea, progresa y persigue.');
+        console.log('\u001b[32mTodo OK\u001b[0m — el mundo pelea, progresa, persigue y muere bien.');
         process.exit(0);
     }
     console.log('\u001b[31m' + failures + ' comprobacion(es) fallaron\u001b[0m');
