@@ -108,13 +108,21 @@ function createEngine(options) {
         log.warning('no se encontro ' + outfitsPath + ': no se podra comprobar el aspecto');
     }
 
+
     world.outfitTypes = outfitTypes;
 
     // --- 3. Registro de contenido -----------------------------------------
     const registry = new ScriptRegistry({ world: world, logger: log });
 
     const loadOptions = () => ({
-        directories: [resolve(config.scriptsDirectory), resolve(config.monstersDirectory)],
+        directories: [
+            resolve(config.scriptsDirectory),
+            resolve(config.monstersDirectory),
+            // El diálogo de los NPC vive junto a sus definiciones, como en TFS. Se carga
+            // como un módulo de contenido más, así que se recarga en caliente igual que
+            // una acción o un monstruo.
+            resolve(config.npcDirectory)
+        ],
         rootDir: rootDir,
         logger: log,
         onError: config.scriptErrorPolicy === 'skip' ? 'skip' : 'abort',
@@ -155,7 +163,7 @@ function createEngine(options) {
     const restoreGame = installGame(game);
 
     // --- 5. Contenido -----------------------------------------------------
-    let content = { files: 0, definitions: 0, byKind: { action: 0, movement: 0, talkaction: 0, monster: 0, event: 0 } };
+    let content = { files: 0, definitions: 0, byKind: { action: 0, movement: 0, talkaction: 0, monster: 0, npc: 0, event: 0 } };
 
     if (config.scriptingEnabled) {
         content = loadContent(registry, loadOptions());
@@ -163,6 +171,43 @@ function createEngine(options) {
             content.definitions + ' definiciones registradas');
     } else {
         log.warning('scriptingEnabled = false: no se carga contenido');
+    }
+
+    // --- 5b. NPC ----------------------------------------------------------
+    //
+    // VA DESPUÉS DEL CONTENIDO Y ANTES DEL MAPA, y el orden es obligatorio por los dos
+    // lados. Después del contenido porque el diálogo de un NPC es un módulo de contenido y
+    // hasta aquí no existe; antes del mapa porque el mapa valida que los NPC que coloca
+    // estén definidos.
+    //
+    // La primera versión de esto estaba junto a los otros XML, ANTES del contenido, y el
+    // resultado fueron dos NPC mudos y un aviso que decía justo eso. El sitio de un paso
+    // no es "donde queda ordenado" sino "después de lo que necesita".
+    const npcTypes = new Map();
+    const npcsPath = path.join(resolve(config.npcDirectory), 'npcs.xml');
+    const npcDefinitions = fs.existsSync(npcsPath)
+        ? Xml.loadNpcs(npcsPath)
+        : new Map();
+
+    if (npcDefinitions.size > 0) {
+        npcDefinitions.forEach((definition, name) => {
+            const dialogue = world.npcTypes.get(name);
+
+            if (!dialogue) {
+                // Un NPC definido y sin diálogo es un NPC mudo, y eso es un fallo de quien
+                // escribe el contenido, no algo que deba descubrir un jugador.
+                log.warning('el npc "' + name + '" esta en npcs.xml pero no tiene modulo ' +
+                    'de dialogo: se quedara mudo');
+                return;
+            }
+
+            npcTypes.set(name, { ...definition, dialogue: dialogue });
+        });
+
+        log.info('npcs.xml: ' + npcDefinitions.size + ' definidos, ' +
+            npcTypes.size + ' con dialogo');
+    } else if (fs.existsSync(path.dirname(npcsPath))) {
+        log.warning('no se encontro ' + npcsPath + ': el mundo no tendra NPC');
     }
 
     // --- 6. Mapa ----------------------------------------------------------
@@ -181,6 +226,7 @@ function createEngine(options) {
         const mapResult = MapLoader.loadMap(mapFile, {
             itemTypes: world.itemTypes,
             monsterTypes: world.monsterTypes,
+            npcTypes: npcTypes,
             logger: log
         });
 
@@ -302,6 +348,110 @@ function createEngine(options) {
             spawnStats.monsters + ' monstruos vivos');
     }
 
+    // --- 11b. NPC ---------------------------------------------------------
+    //
+    // Los NPC se colocan a partir de las posiciones del MAPA, igual que los spawns. El
+    // mapa dice DÓNDE y `npcs.xml` dice CÓMO es cada uno; el diálogo lo pone el registro
+    // al crear la criatura.
+    let npcStats = { placed: 0, skipped: [] };
+
+    if (world.map) {
+        (world.map.npcPlacements || []).forEach((placement) => {
+            const definition = npcTypes.get(placement.name);
+
+            if (!definition) {
+                // El cargador ya avisa de esto al leer el mapa; aquí se salta en vez de
+                // reventar, porque un NPC que falta no debe impedir jugar.
+                npcStats.skipped.push(placement.name);
+                return;
+            }
+
+            world.createNpc(definition, placement);
+            npcStats.placed += 1;
+        });
+
+        if (npcStats.placed > 0 || npcStats.skipped.length > 0) {
+            log.info('npc: ' + npcStats.placed + ' colocados' +
+                (npcStats.skipped.length > 0
+                    ? ', ' + npcStats.skipped.length + ' sin definicion' : ''));
+        }
+    }
+
+    /*
+     * Los NPC OYEN lo que se dice cerca.
+     *
+     * Se engancha al mismo aviso que usa la difusión del habla, así que un NPC oye
+     * exactamente lo mismo que oiría un jugador de al lado. Lo importante es el orden: el
+     * NPC responde ANTES de que el mensaje se difunda, para que su respuesta salga después
+     * de lo que dijo el jugador y la conversación se lea en orden.
+     *
+     * La respuesta NO se difunde desde aquí: el NPC la dice por `onSayLine`, que el mundo
+     * engancha a su vez a la difusión. Así una respuesta de tres frases sale en orden.
+     */
+
+    /**
+     * Los NPC pasean.
+     *
+     * Se les da un tic propio y no se reutiliza el de los monstruos: un monstruo piensa
+     * cada pocos cientos de milisegundos porque persigue, y un NPC piensa cada varios
+     * segundos porque pasea. Meterlos en el mismo bucle obligaría a uno de los dos a
+     * pensar más de lo que necesita.
+     */
+    if (world.npcs.size > 0) {
+        const NPC_TICK_MS = 500;
+
+        /**
+         * Los cuatro pasos, en el orden de `DIRECTION`: norte, este, sur, oeste.
+         *
+         * Se declaran aquí y no se importan de `world` porque son la representación del
+         * MOVIMIENTO, no del mundo, y este es el único sitio que los necesita.
+         */
+        const NPC_STEP_OFFSETS = [
+            { x: 0, y: -1 },
+            { x: 1, y: 0 },
+            { x: 0, y: 1 },
+            { x: -1, y: 0 }
+        ];
+
+        const npcTick = () => {
+            const at = world.now();
+
+            world.npcs.forEach((npc) => {
+                if (npc.onThink) {
+                    npc.onThink(npc, world, at);
+                }
+
+                const decision = npc.think(at);
+                if (!decision.walked) {
+                    return;
+                }
+
+                const offset = NPC_STEP_OFFSETS[decision.direction];
+                const to = {
+                    x: npc.position.x + offset.x,
+                    y: npc.position.y + offset.y,
+                    z: npc.position.z
+                };
+
+                // Sólo da el paso si sigue dentro de su radio Y la casilla se puede
+                // pisar. El radio es lo que impide que acabe dentro de una casa, y el
+                // segundo lo que impide que atraviese una pared.
+                const distance = Math.max(
+                    Math.abs(to.x - npc.home.x), Math.abs(to.y - npc.home.y));
+
+                if (distance > npc.walkRadius) {
+                    return;
+                }
+
+                world.moveCreature(npc, { x: offset.x, y: offset.y });
+            });
+
+            scheduler.schedule(NPC_TICK_MS, npcTick, 'npc-think');
+        };
+
+        scheduler.schedule(NPC_TICK_MS, npcTick, 'npc-think');
+    }
+
     // --- 11. Persistencia -------------------------------------------------
     // Se crea DESPUES del mapa porque un personaje nuevo necesita saber donde
     // aparece, y eso lo dice el waypoint `temple` del mapa.
@@ -343,6 +493,10 @@ function createEngine(options) {
         creatureEvents: registry.events.size,
         monsterTypes: world.monsterTypes.size,
         outfits: world.outfitTypes ? world.outfitTypes.size : 0,
+        // Los NPC se cuentan por los COLOCADOS y no solo por los definidos: de nada sirve
+        // tener diez definidos si el mapa no coloca ninguno.
+        npcs: world.npcs.size,
+        npcTypes: npcTypes.size,
         monsters: world.monsters.size,
         spawns: spawnStats.spawns,
         persistence: persistenceStats,
@@ -493,6 +647,22 @@ function createEngine(options) {
 
     world.on('onCreatureSay', (creature, text) => {
         api.sessions.broadcastSay(creature, text);
+
+        /*
+         * Los NPC oyen DESPUÉS de que el mensaje se difunda, y el orden es lo que hace que
+         * la conversación se lea bien.
+         *
+         * El primer intento los escuchaba en un manejador aparte, registrado ANTES que
+         * éste, así que el NPC respondía antes de que el mensaje del jugador se difundiera
+         * y en el chat salía primero la respuesta y después la pregunta. Se veía al
+         * probarlo por la red; desde dentro del motor los dos caminos funcionaban.
+         *
+         * Un monstruo que grita no hace que el herrero conteste: los NPC oyen a los
+         * jugadores, que es lo que hace que una conversación sea una conversación.
+         */
+        if (creature && creature.isPlayer && creature.isPlayer()) {
+            world.npcsHear(creature, text, world.now());
+        }
     });
 
     /*

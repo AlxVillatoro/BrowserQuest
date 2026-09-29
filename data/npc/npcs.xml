@@ -1,0 +1,32 @@
+<?xml version='1.0' encoding='utf-8'?>
+<!--
+    Definiciones de NPC.
+
+    EL REPARTO ES EL DE TFS: el XML lleva lo ESTÁTICO —el nombre, la salud, el aspecto, la
+    velocidad, cada cuánto pasea— y el DIÁLOGO vive en un módulo de JavaScript. La razón es
+    la misma por la que los monstruos son código y no XML: un diálogo acaba necesitando
+    condiciones, estados y respuestas que dependen de lo que el jugador haya hecho, y eso
+    es lógica. Forzarlo a XML produce un dialecto distinto por cada servidor.
+
+    `module` apunta al archivo del diálogo, relativo a `data/npc/`. En TFS ahí va un
+    `script="guia.lua"`; aquí es un módulo `.js` que exporta `type: 'npc'`.
+-->
+<npcs>
+
+	<npc name="Guia" module="ciudad/guia" walkinterval="3000" speed="110">
+		<health now="100" max="100" />
+		<look type="128" head="78" body="69" legs="58" feet="115" addons="0" />
+	</npc>
+
+	<!--
+	    El herrero PASEA. `walkradius` es cuántas casillas se aleja de donde aparece: sin
+	    radio se queda clavado en el sitio, y sin límite se va por donde le da la gana y
+	    acaba dentro de una casa. El radio es lo que hace que un NPC parezca estar
+	    trabajando en su taller en vez de esperando a que alguien le hable.
+	-->
+	<npc name="Herrero" module="ciudad/herrero" walkinterval="4000" walkradius="3" speed="100">
+		<health now="100" max="100" />
+		<look type="134" head="95" body="40" legs="30" feet="115" addons="0" />
+	</npc>
+
+</npcs>

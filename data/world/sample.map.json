@@ -83,5 +83,10 @@
 
     "spawns": [
         { "x": 20, "y": 20, "z": 7, "monster": "Rat", "interval": 60000, "radius": 3 }
+    ],
+
+    "npcs": [
+        { "x": 41, "y": 41, "z": 7, "name": "Guia" },
+        { "x": 38, "y": 42, "z": 7, "name": "Herrero" }
     ]
 }

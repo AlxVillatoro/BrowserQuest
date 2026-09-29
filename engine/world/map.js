@@ -59,6 +59,9 @@ class GameMap {
 
         this.waypoints = new Map();
         this.spawns = [];
+
+        /** Dónde van los NPC. Posiciones, no criaturas: esto es un archivo, no la partida. */
+        this.npcPlacements = [];
         this.towns = [];
 
         this.explicitTiles = 0;
@@ -447,6 +450,24 @@ class GameMap {
         return this;
     }
 
+    /**
+     * Coloca un NPC en el mapa.
+     *
+     * Se guardan como LISTA y no como criaturas vivas: el mapa es un archivo, y los NPC
+     * son criaturas. El motor las crea al arrancar a partir de estas posiciones, igual que
+     * hace con los spawns de monstruos. Guardar aquí la criatura haría que el mapa no se
+     * pudiera guardar sin arrastrar el estado de la partida.
+     */
+    addNpc(placement) {
+        this.npcPlacements.push(placement);
+        return this;
+    }
+
+    /** Dónde está colocado un NPC, para poder moverlo o quitarlo. */
+    getNpc(name) {
+        return this.npcPlacements.find((entry) => entry.name === name) || null;
+    }
+
     stats() {
         return {
             name: this.name,
@@ -458,7 +479,8 @@ class GameMap {
             // disperso, y conviene tenerlo a la vista.
             cellsIfMaterialized: this.width * this.height * this.floors,
             waypoints: this.waypoints.size,
-            spawns: this.spawns.length
+            spawns: this.spawns.length,
+            npcs: this.npcPlacements.length
         };
     }
 }

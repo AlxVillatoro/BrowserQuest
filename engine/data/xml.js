@@ -33,7 +33,7 @@ function createParser() {
         trimValues: true,
         isArray: (name) => name === 'item' || name === 'attribute' ||
             name === 'vocation' || name === 'skill' || name === 'formula' ||
-            name === 'outfit' || name === 'addon'
+            name === 'outfit' || name === 'addon' || name === 'npc'
     });
 }
 
@@ -205,4 +205,66 @@ function loadOutfits(filepath) {
     return outfits;
 }
 
-module.exports = { createParser, parseFile, attributesToObject, loadItems, loadVocations, loadOutfits };
+/**
+ * Carga las definiciones de NPC de `data/npc/npcs.xml`.
+ *
+ * @param {string} filepath
+ * @returns {Map<string, Object>} nombre -> definición
+ *
+ * El XML sólo trae lo estático. El DIÁLOGO se carga aparte, como un módulo de contenido
+ * más, y su resultado se guarda en `definition.dialogue`. Se separan a propósito: el XML
+ * se lee al arrancar y no cambia; el módulo de diálogo es contenido y se recarga en
+ * caliente como cualquier otro.
+ */
+function loadNpcs(filepath) {
+    const data = parseFile(filepath, createParser());
+    const list = (data.npcs && data.npcs.npc) || [];
+    const npcs = new Map();
+
+    list.forEach((entry) => {
+        const name = entry.name !== undefined ? String(entry.name) : null;
+        if (!name) {
+            return;
+        }
+
+        const health = entry.health || {};
+        const look = entry.look || {};
+
+        npcs.set(name, {
+            name: name,
+            /** El módulo de diálogo, relativo a `data/npc/`. */
+            module: entry.module !== undefined ? String(entry.module) : null,
+            maxHealth: health.max === undefined ? 100 : Number(health.max),
+            health: health.now === undefined ? Number(health.max || 100) : Number(health.now),
+            speed: entry.speed === undefined ? 100 : Number(entry.speed),
+            /**
+             * Cada cuánto intenta dar un paso, y cuántas casillas se aleja de su sitio.
+             *
+             * El radio es lo que impide que un NPC acabe dentro de una casa o al otro lado
+             * del mapa. Sin él, un NPC que pasea es un NPC que se pierde.
+             */
+            walkInterval: entry.walkinterval === undefined ? 0 : Number(entry.walkinterval),
+            walkRadius: entry.walkradius === undefined ? 0 : Number(entry.walkradius),
+            outfit: {
+                lookType: look.type === undefined ? 128 : Number(look.type),
+                head: look.head === undefined ? 78 : Number(look.head),
+                body: look.body === undefined ? 69 : Number(look.body),
+                legs: look.legs === undefined ? 58 : Number(look.legs),
+                feet: look.feet === undefined ? 115 : Number(look.feet),
+                addons: look.addons === undefined ? 0 : Number(look.addons)
+            }
+        });
+    });
+
+    return npcs;
+}
+
+module.exports = {
+    createParser,
+    parseFile,
+    attributesToObject,
+    loadItems,
+    loadVocations,
+    loadOutfits,
+    loadNpcs
+};

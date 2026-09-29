@@ -33,7 +33,7 @@ const MOVEMENT_CALLBACKS = {
     removeitem: 'onRemoveItem'
 };
 
-const KINDS = ['action', 'movement', 'talkaction', 'monster', 'event'];
+const KINDS = ['action', 'movement', 'talkaction', 'monster', 'npc', 'event'];
 
 /**
  * Eventos de criatura: el nombre del callback lo decide el tipo de evento, igual
@@ -80,6 +80,16 @@ class ScriptRegistry {
         // registro escribe directamente en él en vez de mantener una segunda
         // copia que se pueda desincronizar.
         this.monsterTypes = this.world.monsterTypes;
+
+        /**
+         * Los diálogos de NPC, por nombre.
+         *
+         * El nombre lo declara EL MÓDULO y `data/npc/npcs.xml` declara el mismo nombre con
+         * los datos estáticos. Que aparezca en los dos sitios es a propósito: es un dato
+         * repetido que sirve para comprobar que el XML y el módulo hablan del mismo NPC, y
+         * un desajuste se detecta al arrancar en vez de aparecer como un NPC mudo.
+         */
+        this.npcTypes = this.world.npcTypes;
     }
 
     // -----------------------------------------------------------------------
@@ -107,6 +117,8 @@ class ScriptRegistry {
                 return this._registerTalkAction(definition, script);
             case 'monster':
                 return this._registerMonster(definition, script);
+            case 'npc':
+                return this._registerNpc(definition, script);
             case 'event':
                 return this._registerEvent(definition, script);
             default:
@@ -198,6 +210,35 @@ class ScriptRegistry {
         this.monsterTypes.set(definition.name, stored);
         this.registeredScripts.add(script);
         return { kind: 'monster', count: 1 };
+    }
+
+    /**
+     * Registra el diálogo de un NPC.
+     *
+     * El módulo no construye el NPC: declara QUÉ DICE. Los datos estáticos —aspecto,
+     * salud, velocidad, cada cuánto pasea— están en `data/npc/npcs.xml`, que es donde TFS
+     * también los tiene. La razón de partirlo así es que el XML se lee al arrancar y no
+     * cambia, mientras que el diálogo es contenido y se recarga en caliente.
+     */
+    _registerNpc(definition, script) {
+        if (typeof definition.name !== 'string' || definition.name === '') {
+            throw new Error("un npc necesita 'name'");
+        }
+        if (this.npcTypes.has(definition.name)) {
+            this.log.warning('npc duplicado: ' + definition.name);
+        }
+        if (!(definition.keywords instanceof Array) || definition.keywords.length === 0) {
+            throw new Error('el npc "' + definition.name + '" no tiene palabras clave: ' +
+                'un npc que no responde a nada no es un npc');
+        }
+
+        const stored = { ...definition, script: script };
+        delete stored.type;
+
+        this.npcTypes.set(definition.name, stored);
+        this.registeredScripts.add(script);
+
+        return { kind: 'npc', count: 1 };
     }
 
     _registerEvent(definition, script) {
@@ -401,6 +442,7 @@ class ScriptRegistry {
             movements: this.movements.size,
             talkActions: this.talkActions.length,
             monsterTypes: this.monsterTypes.size,
+            npcTypes: this.npcTypes.size,
             events: this.events.size
         };
     }

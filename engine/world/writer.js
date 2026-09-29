@@ -209,6 +209,14 @@ function serializeMap(map, options) {
         return entry;
     });
 
+    // --- NPC ---
+    const npcs = (map.npcPlacements || []).map((entry) => ({
+        x: entry.x,
+        y: entry.y,
+        z: entry.z,
+        name: entry.name
+    }));
+
     const data = {
         format: 'avillatoro-map',
         version: FORMAT_VERSION,
@@ -237,6 +245,9 @@ function serializeMap(map, options) {
     }
     if (spawns.length > 0) {
         data.spawns = spawns;
+    }
+    if (npcs.length > 0) {
+        data.npcs = npcs;
     }
 
     return data;
@@ -321,6 +332,14 @@ function writeMap(map, options) {
         lines.push(data.spawns
             .map((spawn) => '        ' + JSON.stringify(spawn))
             .join(',\n'));
+        lines.push('    ],');
+    }
+
+    if (data.npcs) {
+        lines.push('    "npcs": [');
+        lines.push(data.npcs
+            .map((npc) => '        ' + JSON.stringify(npc))
+            .join(',\n'));
         lines.push('    ]');
     } else {
         // Se quita la coma de la última sección escrita.
@@ -329,8 +348,8 @@ function writeMap(map, options) {
 
     lines.push('}');
 
-    // La coma final sobra si la última sección fue `spawns`: se limpia aquí en vez
-    // de ir arrastrando el estado de cuál fue la última.
+    // La coma final sobra si la última sección fue `spawns` o `npcs`: se limpia aquí en
+    // vez de ir arrastrando el estado de cuál fue la última.
     const text = lines.join('\n').replace(/,(\s*[}\]])/g, '$1');
 
     return text + '\n';

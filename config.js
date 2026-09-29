@@ -42,6 +42,11 @@ module.exports = {
     itemsOtb: 'data/items/items.otb',
     vocationsXml: 'data/XML/vocations.xml',
     outfitsXml: 'data/XML/outfits.xml',
+
+    // Los NPC: `npcs.xml` lleva los datos estáticos y, junto a él, un módulo `.js` por
+    // NPC con su diálogo. Es la disposición de TFS y se carga como contenido, así que
+    // se recarga en caliente.
+    npcDirectory: 'data/npc',
     scriptsDirectory: 'data/scripts',
     monstersDirectory: 'data/monsters',
     worldDirectory: 'data/world',

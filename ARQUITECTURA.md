@@ -134,8 +134,9 @@ falta tocar el motor para añadir un hechizo, la arquitectura está mal.
 | Migración de esquema con datos dentro | hecho y probado |
 | Recoger, soltar e inventario | hecho y probado |
 | Muerte del jugador y reaparición | hecho y probado |
+| NPCs: definiciones, diálogo y paseo | hecho y probado |
 | Importadores OTBM/OTB/DAT/SPR | pendiente |
-| NPCs y diálogo | pendiente |
+| Comercio con NPC | pendiente |
 
 ---
 
@@ -543,6 +544,44 @@ Dos cosas que aparecieron al hacerlo y que merecen quedar escritas:
   de por defecto. La decisión vive ahí y no en la base, porque cuál es el aspecto por
   defecto es cosa del juego. Sin esa comprobación, todos los personajes anteriores
   saldrían con el aspecto 0 y el cliente dibujaría un muñeco en blanco.
+
+**Los NPC.** Son la otra pata del contenido, junto a los monstruos, y el tercer tipo de
+módulo de JavaScript: un monstruo existe para que le pegues y un NPC para que le hables.
+
+El reparto es el de TFS: **el XML lleva lo estático** —aspecto, salud, velocidad, cada
+cuánto pasea— y **el diálogo vive en un módulo**, porque un diálogo acaba necesitando
+condiciones y estados, y forzarlo a XML produce un dialecto distinto por cada servidor.
+Las dos mitades se juntan al arrancar, y si falta una se avisa en vez de dejar un NPC mudo
+sin que nadie sepa por qué.
+
+Dos conceptos hacen todo el trabajo:
+
+- **El foco.** Un NPC no responde a todo el que habla: en cuanto alguien le saluda se
+  centra en esa persona y sólo le atiende a ella hasta que se despide o pasa un minuto sin
+  decir nada. Sin foco, un NPC en una plaza con cinco jugadores contestaría a los cinco a
+  la vez y la conversación no sería de nadie.
+- **El orden de las palabras clave.** Se recorren de arriba abajo y gana **la primera que
+  casa**, así que una palabra general puesta antes que una concreta se come a la concreta.
+  El orden de la lista es significativo, y por eso está escrito en el contenido con esa
+  advertencia al lado.
+
+Y **no pasea mientras habla**, que es lo mismo que hace una persona y además evita tener
+que perseguir al NPC para terminar una frase.
+
+Dos cosas que sólo aparecieron al probarlo por la red, y las dos del mismo tipo —el orden
+de los pasos, no su contenido—:
+
+- La carga de los NPC estaba junto a los demás XML, **antes** del contenido, y el diálogo
+  de un NPC *es* contenido: salieron dos NPC mudos y un aviso diciendo exactamente eso. El
+  sitio de un paso no es "donde queda ordenado" sino "después de lo que necesita".
+- La escucha de los NPC estaba en un manejador registrado antes que el que difunde el
+  habla, así que el NPC respondía **antes** de que se difundiera el mensaje del jugador y
+  en el chat salía primero la respuesta y después la pregunta. Desde dentro del motor los
+  dos caminos funcionaban por separado.
+
+Y un tercero que no era de orden sino de haber sustituido en vez de añadido: el escritor de
+mapas perdió los spawns porque la sección nueva ocupó el sitio de la vieja. Lo cogió la
+prueba de ida y vuelta del mapa, que existe precisamente para esto.
 
 **Fase 5 — Protocolo.** *Hecha la parte que decide, pendiente el transporte.* El
 protocolo, el gestor de vista y las sesiones están hechos y probados. Lo que hace

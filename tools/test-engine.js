@@ -124,7 +124,7 @@ function main() {
     // -----------------------------------------------------------------------
 
     check('los modulos se cargan sin paso manual de registro',
-        engine.stats.contentFiles === 6 && engine.stats.contentDefinitions === 9,
+        engine.stats.contentFiles === 8 && engine.stats.contentDefinitions === 11,
         engine.stats.contentFiles + ' modulos, ' + engine.stats.contentDefinitions + ' definiciones');
 
     check('definiciones por tipo',
@@ -472,7 +472,98 @@ function main() {
     }
 
     // -----------------------------------------------------------------------
-    section('11. Aislamiento');
+    section('11. Los NPC');
+    // -----------------------------------------------------------------------
+
+    check('se cargan las definiciones y los dialogos',
+        engine.stats.npcTypes === 2 && world.npcs.size === 2,
+        engine.stats.npcTypes + ' dialogos, ' + world.npcs.size + ' NPC colocados');
+
+    {
+        const guia = world.getNpc('Guia');
+        const herrero = world.getNpc('Herrero');
+
+        check('el NPC existe como criatura, con su aspecto',
+            guia !== null && guia.isNpc() === true && guia.kind === 'npc' &&
+            guia.outfit.lookType === 128,
+            'aspecto ' + guia.outfit.lookType + ' en ' + guia.position);
+
+        check('y el XML le da lo estatico: paseo y velocidad',
+            herrero.walkInterval === 4000 && herrero.walkRadius === 3 &&
+            guia.walkRadius === 0,
+            'el herrero pasea cada ' + herrero.walkInterval + ' ms en un radio de ' +
+            herrero.walkRadius + '; el guia no se mueve');
+
+        check('y el modulo de contenido le da las palabras clave',
+            guia.keywords.length === 6 && herrero.keywords.length === 5,
+            guia.keywords.length + ' y ' + herrero.keywords.length);
+
+        // --- El foco ---
+        const visitor = world.createPlayer('Visitante', { x: 41, y: 40, z: 7 });
+
+        check('un NPC no responde a quien no le ha saludado',
+            guia.hear(visitor, 'donde esta el templo').replied === false,
+            'si contestara a cualquiera, cinco jugadores a la vez serian un gallinero');
+
+        const greeting = guia.hear(visitor, 'hola');
+        check('un saludo le hace fijarse en quien le habla',
+            greeting.replied === true && greeting.keyword === 'hola' &&
+            guia.isFocusedOn(visitor) === true,
+            '"' + String(guia.lastSaid).slice(0, 44) + '..."');
+
+        check('y ahora si responde a las preguntas',
+            guia.hear(visitor, 'donde estoy').keyword === 'donde' &&
+            /Ahora mismo estas en/.test(guia.lastSaid),
+            '"' + guia.lastSaid + '"');
+
+        check('lo que no entiende lo dice, en vez de callarse',
+            guia.hear(visitor, 'xyzzy').keyword === 'default' &&
+            /No te entiendo/.test(guia.lastSaid),
+            'callarse haria pensar que el NPC se ha roto');
+
+        // `hola` va antes que el resto, y gana la PRIMERA que casa.
+        check('gana la PRIMERA palabra clave que casa',
+            guia.hear(visitor, 'hola, donde esta el templo').keyword === 'hola',
+            'por eso el orden de la lista es significativo y no una lista sin mas');
+
+        const bye = guia.hear(visitor, 'adios');
+
+        check('despedirse suelta el foco',
+            bye.keyword === 'adios' && guia.focus === null,
+            'y lo suelta el MOTOR: si cada NPC tuviera que acordarse, el que se olvidara ' +
+            'se quedaria pegado a un jugador para siempre');
+
+        check('y tras despedirse vuelve a no responder',
+            guia.hear(visitor, 'donde estoy').replied === false);
+
+        world.teleportCreature(visitor, { x: 60, y: 60, z: 7 });
+        check('un NPC no oye desde el otro lado del mapa',
+            guia.hear(visitor, 'hola').reason === 'tooFar',
+            'oye a 4 casillas, y por eso no contesta a un grito lejano');
+
+        world.teleportCreature(visitor, { x: 41, y: 40, z: 7 });
+
+        check('el guia no pasea: su radio es cero',
+            guia.think(world.now()).reason === 'stationary');
+
+        // Con azar inyectado la prueba es reproducible. Con `Math.random` seria una
+        // moneda al aire, y una prueba que falla una de cada cuatro veces no sirve.
+        const walk = herrero.think(world.now() + 100000, () => 0.5);
+        check('el herrero si pasea, y el azar es inyectable',
+            walk.walked === true && walk.direction === 2,
+            'direccion ' + walk.direction + ' (sur), elegida con un azar fijo');
+
+        herrero.setFocus(visitor, world.now());
+        check('y no pasea mientras le estan hablando',
+            herrero.think(world.now() + 1000, () => 0.5).reason === 'talking',
+            'irse andando a mitad de una conversacion obliga a perseguirlo');
+        herrero.clearFocus();
+
+        world.removePlayer(visitor.id);
+    }
+
+    // -----------------------------------------------------------------------
+    section('12. Aislamiento');
     // -----------------------------------------------------------------------
 
     // Se comparan los campos que importan, no el objeto entero. El grafo del mundo

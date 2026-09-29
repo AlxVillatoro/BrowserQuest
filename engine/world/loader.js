@@ -110,6 +110,7 @@ function buildItem(entry, itemTypes, report, location) {
  * @param {Object} options
  * @param {Map<number, Object>} options.itemTypes definiciones de items.xml
  * @param {Map<string, Object>} [options.monsterTypes] para validar los spawns
+ * @param {Map<string, Object>} [options.npcTypes] para validar los NPC colocados
  * @param {Object} [options.logger]
  * @returns {{map: GameMap|null, report: ValidationReport}}
  */
@@ -143,6 +144,7 @@ function buildMap(data, options) {
     const opts = options || {};
     const itemTypes = opts.itemTypes || new Map();
     const monsterTypes = opts.monsterTypes || new Map();
+    const npcTypes = opts.npcTypes || new Map();
     const report = new ValidationReport();
 
     // --- Cabecera ---------------------------------------------------------
@@ -299,6 +301,49 @@ function buildMap(data, options) {
             monster: entry.monster,
             interval: entry.interval === undefined ? 60000 : Number(entry.interval),
             radius: entry.radius === undefined ? 1 : Number(entry.radius)
+        });
+    });
+
+    // --- NPC ---------------------------------------------------------------
+    //
+    // Los NPC van en el MAPA y no en su propia lista porque su sitio es una posición del
+    // mundo, igual que la de un spawn. Ponerlos en un archivo aparte obligaría a
+    // mantener dos archivos de acuerdo sobre qué mapa es cuál, y a la hora de mover un
+    // NPC por una casilla habría que acordarse de cuál de los dos toca.
+    (data.npcs || []).forEach((entry, index) => {
+        const location = where(entry.x, entry.y, entry.z);
+
+        if (!map.inBounds(Number(entry.x), Number(entry.y), Number(entry.z))) {
+            report.error('npc #' + index + ' fuera del mapa', location);
+            return;
+        }
+        if (!entry.name) {
+            report.error('npc #' + index + ' sin nombre', location);
+            return;
+        }
+        if (npcTypes.size > 0 && !npcTypes.has(entry.name)) {
+            report.error('el mapa coloca al npc "' + entry.name +
+                '", que no esta definido en data/npc/npcs.xml', location);
+            return;
+        }
+
+        /**
+         * Un NPC sobre una casilla que no se puede pisar es un NPC al que no se puede
+         * llegar. Se avisa en vez de rechazarlo, porque hay NPC que están a propósito
+         * dentro de una jaula o detrás de un mostrador, y eso es una decisión de quien
+         * hace el mapa, no un error.
+         */
+        const tile = map.getTile(Number(entry.x), Number(entry.y), Number(entry.z));
+        if (tile && !tile.isWalkable()) {
+            report.warning('el npc "' + entry.name + '" esta sobre una casilla ' +
+                'que no se puede pisar: no se podra llegar a el', location);
+        }
+
+        map.addNpc({
+            x: Number(entry.x),
+            y: Number(entry.y),
+            z: Number(entry.z),
+            name: entry.name
         });
     });
 

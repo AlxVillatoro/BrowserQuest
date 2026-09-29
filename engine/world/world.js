@@ -23,6 +23,7 @@
 const { Position, DIRECTIONS, directionFrom } = require('./position');
 const { Item } = require('./item');
 const { Player, Monster, DIRECTION, resetIdCounter } = require('./creature');
+const { createNpc } = require('./npc');
 const { normalizeOutfit } = require('./outfit');
 
 /** Desplazamiento por número de dirección de Tibia. */
@@ -55,6 +56,12 @@ class World {
          * añadidos. Los sprites y la paleta son del cliente.
          */
         this.outfitTypes = new Map();
+
+        /** Los diálogos de NPC, por nombre. Los rellena el registro. */
+        this.npcTypes = new Map();
+
+        /** Los NPC vivos, por nombre, para poder encontrarlos sin recorrer el mundo. */
+        this.npcs = new Map();
 
         this.map = null;
 
@@ -748,6 +755,100 @@ class World {
             entry.position = index;
         });
         return inventory;
+    }
+
+    /** Crea un NPC y lo coloca en el mundo. */
+    createNpc(definition, position) {
+        const npc = createNpc(definition, Position.from(position));
+
+        npc.outfit = normalizeOutfit(definition.outfit);
+
+        // El diálogo se le engancha AQUÍ y no en el constructor: el módulo de contenido
+        // puede recargarse, y entonces hay que volver a engancharlo. Si viviera dentro
+        // del NPC, recargar el contenido dejaría a los NPC con el diálogo viejo.
+        this.attachDialogue(npc, definition.name);
+
+        this.creatures.set(npc.id, npc);
+        this.npcs.set(npc.name, npc);
+        this._registerCreature(npc);
+
+        // Lo que diga el NPC sale al mundo en el momento, por el mismo camino que el habla
+        // de un jugador. Así el cliente no necesita saber que existe algo llamado NPC: ve
+        // una criatura que habla, que es exactamente lo que es.
+        npc.onSayLine = (text) => this.creatureSay(npc.id, text);
+
+        return npc;
+    }
+
+    /**
+     * Engancha a un NPC el diálogo registrado con su nombre.
+     *
+     * Es lo que hace que recargar el contenido cambie lo que dicen los NPC que ya están
+     * en el mundo, sin tener que reiniciar ni volver a colocarlos.
+     */
+    attachDialogue(npc, name) {
+        const dialogue = this.npcTypes.get(String(name));
+
+        // Se limpia siempre antes: si el diálogo nuevo tiene menos palabras clave que el
+        // viejo, sin esto sobrevivirían las que ya no existen.
+        npc.keywords = [];
+        npc.defaultHandler = null;
+
+        if (!dialogue) {
+            return false;
+        }
+
+        (dialogue.keywords || []).forEach((entry) => {
+            npc.addKeyword(entry.words, entry.say, {
+                greeting: entry.greeting,
+                farewell: entry.farewell
+            });
+        });
+
+        if (typeof dialogue.default === 'function') {
+            npc.setDefault(dialogue.default);
+        }
+
+        npc.dialogue = dialogue;
+        npc.onThink = typeof dialogue.onThink === 'function' ? dialogue.onThink : null;
+
+        return true;
+    }
+
+    /** Vuelve a enganchar el diálogo a todos los NPC vivos. Tras recargar el contenido. */
+    refreshDialogues() {
+        let count = 0;
+        this.npcs.forEach((npc) => {
+            if (this.attachDialogue(npc, npc.name)) {
+                count += 1;
+            }
+        });
+        return count;
+    }
+
+    getNpc(name) {
+        return this.npcs.get(String(name)) || null;
+    }
+
+    /**
+     * Reparte lo que alguien ha dicho entre los NPC que puedan oírlo.
+     *
+     * Recorre TODOS los NPC y deja que cada uno decida si le oye, en vez de calcular
+     * distancias aquí. La razón es que "oír" es una regla del NPC —tiene radio, y podría
+     * depender de si está dormido o enfadado— y repartirla entre dos sitios acaba con la
+     * regla escrita dos veces y distinta.
+     */
+    npcsHear(speaker, text, now) {
+        const replies = [];
+
+        this.npcs.forEach((npc) => {
+            const result = npc.hear(speaker, text, now);
+            if (result.replied) {
+                replies.push({ npc: npc, result: result });
+            }
+        });
+
+        return replies;
     }
 
     /** Todo lo que lleva encima una criatura, para el comando de listar. */
