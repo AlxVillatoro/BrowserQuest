@@ -33,6 +33,8 @@ const { createGame, installGame } = require('../scripting/game');
 const MapLoader = require('../world/loader');
 const { Scheduler } = require('./scheduler');
 const { Spawner } = require('../world/spawner');
+const { Combat } = require('../world/combat');
+const { MonsterAI } = require('../world/ai');
 
 /**
  * @param {Object} [options]
@@ -131,7 +133,7 @@ function createEngine(options) {
     const restoreGame = installGame(game);
 
     // --- 5. Contenido -----------------------------------------------------
-    let content = { files: 0, definitions: 0, byKind: { action: 0, movement: 0, talkaction: 0, monster: 0 } };
+    let content = { files: 0, definitions: 0, byKind: { action: 0, movement: 0, talkaction: 0, monster: 0, event: 0 } };
 
     if (config.scriptingEnabled) {
         content = loadContent(registry, loadOptions());
@@ -214,9 +216,48 @@ function createEngine(options) {
         });
     });
 
-    // --- 8. Spawns --------------------------------------------------------
+    // --- 8. Combate e IA --------------------------------------------------
+    const combat = new Combat({
+        world: world,
+        scheduler: scheduler,
+        logger: log,
+        config: config
+    });
+
+    // La IA se crea ANTES de cargar los spawns: se suscribe a la aparicion de
+    // criaturas, asi que los monstruos que aparezcan despues empiezan a pensar
+    // solos. Si se creara despues, los del arranque se quedarian quietos.
+    const ai = new MonsterAI({
+        world: world,
+        combat: combat,
+        scheduler: scheduler,
+        logger: log
+    });
+
+    // --- 9. Los eventos de criatura, hacia el contenido -------------------
+    // El envoltorio se construye por criatura y no por identificador suelto: asi
+    // un handler de muerte recibe un monstruo y no un jugador.
+    const wrap = (creature) => (creature ? registry.entities.creature(creature.id) : null);
+
+    world.on('onKill', (killer, target) => {
+        registry.dispatchEvent('kill', [wrap(killer), wrap(target)]);
+    });
+
+    world.on('onDeath', (target, killer, dropped) => {
+        registry.dispatchEvent('death', [
+            wrap(target),
+            wrap(killer),
+            dropped.map((item) => item.getName())
+        ]);
+    });
+
+    world.on('onAdvance', (player, skill, oldLevel, newLevel) => {
+        registry.dispatchEvent('advance', [wrap(player), skill, oldLevel, newLevel]);
+    });
+
+    // --- 10. Spawns -------------------------------------------------------
     // El gestor se suscribe por su cuenta al evento de muerte: es quien lo
-    // necesita, así que no depende de que el motor se acuerde de cablearlo.
+    // necesita, asi que no depende de que el motor se acuerde de cablearlo.
     const spawner = new Spawner({ world: world, scheduler: scheduler, logger: log });
 
     let spawnStats = { spawns: 0, monsters: 0 };
@@ -236,6 +277,7 @@ function createEngine(options) {
         actions: registry.actions.size,
         movements: registry.movements.size,
         talkActions: registry.talkActions.length,
+        creatureEvents: registry.events.size,
         monsterTypes: world.monsterTypes.size,
         monsters: world.monsters.size,
         spawns: spawnStats.spawns,
@@ -255,6 +297,8 @@ function createEngine(options) {
         game: game,
         scheduler: scheduler,
         spawner: spawner,
+        combat: combat,
+        ai: ai,
         vocations: vocations,
         stats: stats,
 
@@ -278,6 +322,9 @@ function createEngine(options) {
          * temporizador de fondo dentro de `createEngine` lo haría imposible.
          */
         start() {
+            // Los monstruos que ya existian empiezan a pensar; los que aparezcan
+            // despues lo hacen solos al suscribirse la IA a su aparicion.
+            ai.start();
             return world.start();
         },
 
@@ -289,6 +336,7 @@ function createEngine(options) {
 
         shutdown() {
             world.stop();
+            ai.stop();
             if (scheduler) {
                 scheduler.clear();
             }

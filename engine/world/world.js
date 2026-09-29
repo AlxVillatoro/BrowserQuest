@@ -114,11 +114,12 @@ class World {
     /**
      * Avisa a los suscriptores de un evento.
      *
-     * Un suscriptor que falla no impide a los demás, igual que en el planificador:
-     * si un sistema revienta, los otros siguen funcionando. Es lo que se quiere en
-     * un servidor vivo.
+     * Es la contrapartida de `on`, y lo usan los sistemas del propio motor (el
+     * combate avisa de una muerte, la IA de nada). Un suscriptor que falla no
+     * impide a los demás, igual que en el planificador: si un sistema revienta,
+     * los otros siguen funcionando. Es lo que se quiere en un servidor vivo.
      */
-    _emit(event, ...args) {
+    emit(event, ...args) {
         const listeners = this.hooks[event];
         if (!listeners || listeners.length === 0) {
             return 0;
@@ -204,7 +205,7 @@ class World {
         this.monsters.set(monster.id, monster);
         this._registerCreature(monster);
 
-        this._emit('onCreatureAppear', monster);
+        this.emit('onCreatureAppear', monster);
         return monster;
     }
 
@@ -229,7 +230,7 @@ class World {
         this.monsters.delete(monster.id);
         this._unregisterCreature(monster);
 
-        this._emit('onCreatureDisappear', monster);
+        this.emit('onCreatureDisappear', monster);
         return true;
     }
 
@@ -249,7 +250,7 @@ class World {
 
         this.removeMonster(monster.id);
 
-        this._emit('onMonsterDeath', monster, killer || null);
+        this.emit('onMonsterDeath', monster, killer || null);
         return true;
     }
 
@@ -445,10 +446,10 @@ class World {
         }
 
         if (fromTile) {
-            this._emit('onStepOut', creature, fromTile, to);
+            this.emit('onStepOut', creature, fromTile, to);
         }
         if (toTile) {
-            this._emit('onStepIn', creature, toTile, fromPosition);
+            this.emit('onStepIn', creature, toTile, fromPosition);
         }
 
         return to;

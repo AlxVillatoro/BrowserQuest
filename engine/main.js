@@ -60,9 +60,11 @@ function main() {
     console.log('    movimientos ........... ' + s.byKind.movement);
     console.log('    comandos .............. ' + s.byKind.talkaction);
     console.log('    monstruos ............. ' + s.byKind.monster);
+    console.log('    eventos ............... ' + s.byKind.event);
     console.log('  acciones registradas .... ' + s.actions + ' items');
     console.log('  movimientos registrados . ' + s.movements + ' items');
     console.log('  comandos registrados .... ' + s.talkActions);
+    console.log('  eventos registrados ..... ' + s.creatureEvents);
     console.log('  tipos de monstruo ....... ' + s.monsterTypes);
 
     if (s.map) {

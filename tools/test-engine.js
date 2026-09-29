@@ -116,12 +116,13 @@ function main() {
     // -----------------------------------------------------------------------
 
     check('los modulos se cargan sin paso manual de registro',
-        engine.stats.contentFiles === 5 && engine.stats.contentDefinitions === 6,
+        engine.stats.contentFiles === 6 && engine.stats.contentDefinitions === 7,
         engine.stats.contentFiles + ' modulos, ' + engine.stats.contentDefinitions + ' definiciones');
 
     check('definiciones por tipo',
         engine.stats.byKind.action === 1 && engine.stats.byKind.movement === 2 &&
-        engine.stats.byKind.talkaction === 2 && engine.stats.byKind.monster === 1,
+        engine.stats.byKind.talkaction === 2 && engine.stats.byKind.monster === 1 &&
+        engine.stats.byKind.event === 1,
         JSON.stringify(engine.stats.byKind));
 
     check('un modulo puede declarar varios registros con un array',

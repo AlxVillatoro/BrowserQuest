@@ -113,8 +113,13 @@ falta tocar el motor para añadir un hechizo, la arquitectura está mal.
 | Planificador de eventos temporizados | hecho y probado |
 | Spawns y reaparición | hecho y probado |
 | Limpieza de tiles materializados | hecho y probado |
-| Combate | pendiente |
-| IA de monstruos | pendiente |
+| Combate (daño, armadura, elementos) | hecho, con la fórmula de daño pendiente de verificar |
+| Experiencia y subida de nivel | hecho y probado |
+| Botín y eventos de criatura | hecho y probado |
+| Búsqueda de caminos | hecho y probado |
+| IA de monstruos: ver, perseguir, atacar | hecho y probado |
+| Hechizos de área, invocación, huida | pendiente |
+| Frases de los monstruos (`voices`) | pendiente (los datos ya se cargan) |
 | Protocolo y red | pendiente |
 | Persistencia | pendiente |
 | Importadores OTBM/OTB/DAT/SPR | pendiente |
@@ -468,8 +473,21 @@ plantas, validador de mapas, criaturas, movimiento con cooldown, planificador de
 eventos, spawns con reaparición y limpieza de los tiles que el tránsito materializa.
 El importador de OTBM sigue pendiente.
 
-**Fase 4 — Combate e IA.** Daño, muerte, botín, y monstruos que persiguen y
-atacan. Es lo que convierte el mundo en un juego.
+**Fase 4 — Combate e IA.** *Hecha, con una salvedad.* Daño con armadura y
+resistencias elementales, muerte, botín, experiencia con la fórmula cúbica
+verificada, subida de nivel, eventos de criatura (`onKill`, `onDeath`,
+`onAdvance`), búsqueda de caminos y monstruos que ven, persiguen, atacan y vuelven
+a casa.
+
+La salvedad, dicha en voz alta: **la fórmula de daño no está verificada** contra el
+código de The Forgotten Server. El SISTEMA sí es fiel —intervalos, probabilidades,
+alcances, resistencias e inmunidades se leen de las definiciones reales de los
+monstruos—, pero la fórmula está aislada en `DEFAULT_FORMULAS` y el motor la acepta
+inyectada, así que sustituirla es cambiar un objeto. Se prefirió dejarla señalada
+antes que inventar números y presentarlos como los de Tibia.
+
+Lo que falta de esta fase: hechizos de área, invocación, huida con poca salud y las
+frases de los monstruos. Los datos ya se cargan; falta la capa que los usa.
 
 **Fase 4 — Red y protocolo.** Servidor autoritativo. Aquí es donde el cliente
 pasa a ser un terminal: hoy el cliente heredado es **cliente-autoritativo para el

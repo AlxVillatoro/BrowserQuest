@@ -33,7 +33,20 @@ const MOVEMENT_CALLBACKS = {
     removeitem: 'onRemoveItem'
 };
 
-const KINDS = ['action', 'movement', 'talkaction', 'monster'];
+const KINDS = ['action', 'movement', 'talkaction', 'monster', 'event'];
+
+/**
+ * Eventos de criatura: el nombre del callback lo decide el tipo de evento, igual
+ * que en los movimientos. Es el mecanismo de TFS para `onKill`, `onDeath` y
+ * compañía.
+ */
+const CREATURE_EVENTS = {
+    kill: 'onKill',
+    death: 'onDeath',
+    advance: 'onAdvance',
+    login: 'onLogin',
+    logout: 'onLogout'
+};
 
 /** Canales de chat, para el cuarto argumento de `onSay`. */
 const TALKTYPE_SAY = 1;
@@ -59,6 +72,9 @@ class ScriptRegistry {
         this.movements = new Map();     // "evento:id" -> { handler, script }
         this.talkActions = [];          // { words, handler, script }
         this.registeredScripts = new Set();
+
+        /** Eventos de criatura: tipo de evento -> { handler, script }. */
+        this.events = new Map();
 
         // Los tipos de monstruo son contenido, y el mundo es su dueño: el
         // registro escribe directamente en él en vez de mantener una segunda
@@ -91,6 +107,8 @@ class ScriptRegistry {
                 return this._registerTalkAction(definition, script);
             case 'monster':
                 return this._registerMonster(definition, script);
+            case 'event':
+                return this._registerEvent(definition, script);
             default:
                 throw new Error("tipo de definicion desconocido: " + JSON.stringify(definition.type) +
                     '. Se esperaba uno de: ' + KINDS.join(', '));
@@ -182,6 +200,32 @@ class ScriptRegistry {
         return { kind: 'monster', count: 1 };
     }
 
+    _registerEvent(definition, script) {
+        const event = String(definition.event || '').toLowerCase();
+        const callbackName = CREATURE_EVENTS[event];
+
+        if (!callbackName) {
+            throw new Error("tipo de evento desconocido: '" + definition.event +
+                "'. Validos: " + Object.keys(CREATURE_EVENTS).join(', '));
+        }
+        if (typeof definition[callbackName] !== 'function') {
+            throw new Error("un evento de tipo '" + event + "' necesita '" + callbackName + "'");
+        }
+
+        const existing = this.events.get(event);
+        if (existing) {
+            // Un solo handler por tipo de evento global. Se avisa porque el
+            // segundo sustituye al primero y el fallo aparecería en el que dejó
+            // de ejecutarse, que es el más difícil de rastrear.
+            this.log.warning('evento "' + event + '" duplicado: ' +
+                existing.script + ' sera sustituido por ' + script);
+        }
+
+        this.events.set(event, { handler: definition[callbackName], script: script });
+        this.registeredScripts.add(script);
+        return { kind: 'event', count: 1 };
+    }
+
     // -----------------------------------------------------------------------
     // Despacho
     // -----------------------------------------------------------------------
@@ -258,7 +302,9 @@ class ScriptRegistry {
         }
 
         const c = context || {};
-        const creature = this.entities.player(c.creatureId || 0);
+        // `creature` y no `player`: quien pisa un tile puede ser un monstruo, y
+        // un handler de movimiento debe recibir el envoltorio que corresponde.
+        const creature = this.entities.creature(c.creatureId || 0);
 
         // El evento se registra por TIPO de item, pero el handler debe recibir la
         // INSTANCIA que hay en el tile. El motor conoce las dos, así que se pasan
@@ -330,6 +376,20 @@ class ScriptRegistry {
         ]);
     }
 
+    /**
+     * Evento de criatura: el `onKill` / `onDeath` / `onAdvance` de TFS.
+     *
+     * @param {string} event 'kill' | 'death' | 'advance' | ...
+     * @param {Array} args ya construidos por quien avisa
+     */
+    dispatchEvent(event, args) {
+        const entry = this.events.get(String(event).toLowerCase());
+        if (!entry) {
+            return { handled: false };
+        }
+        return this._invoke(entry, CREATURE_EVENTS[String(event).toLowerCase()], args);
+    }
+
     // -----------------------------------------------------------------------
     // Informe
     // -----------------------------------------------------------------------
@@ -340,9 +400,18 @@ class ScriptRegistry {
             actions: this.actions.size,
             movements: this.movements.size,
             talkActions: this.talkActions.length,
-            monsterTypes: this.monsterTypes.size
+            monsterTypes: this.monsterTypes.size,
+            events: this.events.size
         };
     }
 }
 
-module.exports = { ScriptRegistry, MOVEMENT_CALLBACKS, KINDS, TALKTYPE_SAY, TALKTYPE_WHISPER, TALKTYPE_YELL };
+module.exports = {
+    ScriptRegistry,
+    MOVEMENT_CALLBACKS,
+    CREATURE_EVENTS,
+    KINDS,
+    TALKTYPE_SAY,
+    TALKTYPE_WHISPER,
+    TALKTYPE_YELL
+};

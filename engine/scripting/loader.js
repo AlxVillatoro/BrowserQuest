@@ -101,7 +101,7 @@ function normalizeExports(exported) {
 function loadContent(registry, options) {
     const log = options.logger;
     const onError = options.onError === 'skip' ? 'skip' : 'abort';
-    const byKind = { action: 0, movement: 0, talkaction: 0, monster: 0 };
+    const byKind = { action: 0, movement: 0, talkaction: 0, monster: 0, event: 0 };
 
     let files = 0;
     let definitions = 0;

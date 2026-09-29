@@ -1,6 +1,6 @@
 {
     "name": "avillatoro",
-    "version": "0.5.0",
+    "version": "0.6.0",
     "private": true,
     "description": "MMORPG 2D estilo Tibia con arquitectura de servidor de Tibia: motor, cliente, herramientas y datapack extensible por modulos JavaScript y definiciones XML.",
     "license": "MPL-2.0",
@@ -10,10 +10,11 @@
     "scripts": {
         "engine": "node engine/main.js",
         "engine:reload": "node engine/main.js --reload",
-        "test": "node tools/test-engine.js && node tools/test-world.js && node tools/test-simulation.js",
+        "test": "node tools/test-engine.js && node tools/test-world.js && node tools/test-simulation.js && node tools/test-combat.js",
         "test:engine": "node tools/test-engine.js",
         "test:world": "node tools/test-world.js",
         "test:simulation": "node tools/test-simulation.js",
+        "test:combat": "node tools/test-combat.js",
         "start": "node server/js/main.js",
         "test:legacy": "node tools/smoke-test.js",
         "check:client": "node tools/check-client.js",

@@ -65,6 +65,14 @@ module.exports = {
         canWalkOnPoison: false
     },
 
+    /**
+     * Ataques. La forma es la de TFS: cada ataque declara su intervalo, su
+     * probabilidad y su rango de daño. El daño máximo se escribe NEGATIVO por
+     * convención de Tibia, y el motor usa su valor absoluto.
+     *
+     * La probabilidad es lo que hace que un monstruo no use todas sus habilidades
+     * a la vez, y el intervalo es lo que impide que las encadene.
+     */
     attacks: [
         { name: 'melee', interval: 2000, chance: 100, minDamage: 0, maxDamage: -8 }
     ],
@@ -74,7 +82,20 @@ module.exports = {
         armor: 1
     },
 
-    elements: [],
+    /**
+     * Resistencias elementales, con la lectura de Tibia:
+     *   percent positivo -> resistente (25 = un 25% menos de daño)
+     *   percent = 100    -> inmune
+     *   percent negativo -> débil (más daño)
+     *
+     * Los tipos se nombran en minúscula en vez de usar las constantes `COMBAT_*`
+     * de Tibia, que en JavaScript no existen.
+     */
+    elements: [
+        { type: 'fire', percent: 20 },
+        { type: 'ice', percent: -10 }
+    ],
+
     immunities: [],
 
     voices: {

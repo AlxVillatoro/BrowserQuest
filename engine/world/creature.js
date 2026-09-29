@@ -83,6 +83,9 @@ class Creature {
         /** Cuándo (ms epoch) podrá volver a moverse. Lo lleva el mundo. */
         this.nextStepAt = 0;
 
+        /** Cuándo (ms epoch) podrá volver a atacar. Lo lleva el combate. */
+        this.nextAttackAt = 0;
+
         this.removed = false;
     }
 
@@ -200,11 +203,28 @@ class Player extends Creature {
         super(opts);
 
         this.level = opts.level === undefined ? 1 : opts.level;
+
+        /**
+         * Experiencia ACUMULADA, no la que falta para el siguiente nivel.
+         * Guardarla acumulada hace que comprobar una subida de nivel sea una sola
+         * comparación en vez de sumar tramos, y evita que un redondeo se acumule.
+         */
+        this.experience = opts.experience === undefined ? 0 : opts.experience;
+
         this.vocation = opts.vocation === undefined ? 'None' : opts.vocation;
 
         /** Lo que el jugador lleva equipado. Un solo hueco de cada tipo. */
         this.armor = opts.armor === undefined ? 0 : opts.armor;
         this.weapon = opts.weapon === undefined ? 0 : opts.weapon;
+
+        /** Nivel de armadura, que es lo que usa el combate para reducir daño. */
+        this.armorLevel = opts.armorLevel === undefined ? 0 : opts.armorLevel;
+
+        /** Ataque del arma equipada, para el cálculo de daño del jugador. */
+        this.weaponAttack = opts.weaponAttack === undefined ? 0 : opts.weaponAttack;
+
+        /** Habilidad de ataque, que todavía no se entrena. */
+        this.attackSkill = opts.attackSkill === undefined ? 10 : opts.attackSkill;
     }
 
     get kind() {
@@ -232,6 +252,16 @@ class Monster extends Creature {
 
         /** Cuándo (ms epoch) debe volver a su punto de aparición. */
         this.returnAt = 0;
+
+        /**
+         * Camino que está siguiendo y hacia dónde.
+         *
+         * Se guarda en el monstruo y no se recalcula en cada turno: recalcularlo
+         * serían cuatro búsquedas por segundo y por monstruo, y con doscientos
+         * monstruos eso se come el tick.
+         */
+        this.path = null;
+        this.pathGoal = null;
     }
 
     get kind() {
