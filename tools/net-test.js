@@ -375,12 +375,32 @@ async function main() {
         session.handle([P.CLIENT.SAY, 'hola a todos']);
         await sleep(250);
 
+        /*
+         * Se busca el mensaje DEL JUGADOR y no se coge el ultimo.
+         *
+         * Desde que hay NPC, decir "hola" cerca de uno hace que conteste, asi que el
+         * ultimo mensaje de habla ya no es el del jugador. La primera version de esta
+         * comprobacion cogia el ultimo y fallaba con la respuesta del herrero, que es
+         * exactamente lo que tiene que pasar: el cliente recibe las dos cosas.
+         */
         const said = client.received.filter((m) => m[0] === P.SERVER.CREATURE_SAY)
-            .slice(saysBeforeTalk).pop();
+            .slice(saysBeforeTalk)
+            .find((m) => m[3] === 'hola a todos');
 
         check('una frase normal si se difunde como habla',
-            said !== undefined && said[3] === 'hola a todos',
+            said !== undefined && said[2] === 'PorRed',
             said ? '"' + said[2] + ': ' + said[3] + '"' : 'no llego');
+
+        // Y si habia un NPC cerca, tambien contesto: son dos cosas distintas y las dos
+        // tienen que llegar.
+        const npcReply = client.received.filter((m) => m[0] === P.SERVER.CREATURE_SAY)
+            .slice(saysBeforeTalk)
+            .find((m) => m[2] === 'Guia' || m[2] === 'Herrero');
+
+        check('y si hay un NPC cerca, ademas contesta',
+            npcReply !== undefined && /Hola|Buenas/.test(npcReply[3]),
+            npcReply ? '"' + npcReply[2] + ': ' + npcReply[3].slice(0, 40) + '..."'
+                : 'el NPC no dijo nada');
     }
 
     // =======================================================================

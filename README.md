@@ -64,6 +64,12 @@ cliente todavía no conoce las banderas de los objetos —no viajan en el protoc
 que con el izquierdo pulsar una pared para mirarla intentaría recogerla. Un cliente de
 verdad sí las conoce, porque las saca de su propio `.dat`.
 
+**Hay dos NPC con los que hablar.** El Guía está junto al templo y el Herrero un poco
+al oeste, y el Herrero pasea por su taller. Se les saluda con `hola` y a partir de ahí
+atienden sólo a quien les ha saludado, hasta que se les dice `adios` o pasa un minuto.
+Tienen palabras clave: prueba con `templo`, `donde`, `armas`, `precios` o `salir`.
+Sólo oyen a cuatro casillas, así que hay que acercarse.
+
 Al morir pierdes un 10% de la experiencia y sueltas todo lo que llevabas donde caíste,
 y reapareces en el templo. Las dos cosas se configuran en `config.js`
 (`deathLosePercent` y `deathDropInventory`), porque para un servidor de pruebas el
@@ -209,9 +215,10 @@ engine/          MOTOR NUEVO
     loader.js        carga y VALIDACIÓN del formato de mapa
 data/            DATAPACK (lo que toca un administrador de servidor)
   items/           items.xml, con las banderas que hacen funcionar el apilado
-  XML/             vocaciones, outfits, outfits... las definiciones del motor
+  XML/             vocaciones y aspectos: las definiciones del motor
   scripts/         contenido programado (acciones, movimientos, comandos)
   monsters/        monstruos, como módulos JavaScript
+  npc/             npcs.xml (lo estático) y un módulo .js por NPC (su diálogo)
   world/           mapas en el formato interno (JSON, legible en un diff)
 client/          EL CLIENTE DEL MOTOR NUEVO
   avillatoro/
