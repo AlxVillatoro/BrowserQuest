@@ -8,6 +8,16 @@ config_local*
 # escribir en el workspace, y la caché global de npm vive fuera de él.
 .npm-cache
 
+# Banco de pruebas desechable (comparativa de runtimes de Lua).
+_scratch
+
 client/audio/music
 .DS_Store
 *.swp
+
+# Caches de npm (ojo: npm usa .npmcache ademas de .npm-cache)
+.npmcache
+.npm-cache*
+
+# Restos de investigacion de los subagentes
+.research

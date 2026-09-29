@@ -5,9 +5,11 @@ Deriva de [Mozilla BrowserQuest](https://github.com/mozilla/BrowserQuest) (MPL-2
 cuyo motor de tile, cliente Canvas y protocolo WebSocket se toman como base y se
 modernizan para Node.js actual.
 
-> Estado: **base técnica funcionando y verificada**. El objetivo jugable (plantas
-> múltiples, inventario de contenedores, progresión, persistencia y renderer
-> 2.5D) está planificado pero aún no implementado. Ver *Roadmap*.
+> Estado: **dos piezas funcionando y verificadas.** El **motor nuevo**
+> (`engine/` + `data/`) carga un datapack extensible por Lua y XML, con despacho
+> de eventos probado. El **servidor heredado** (`server/`) sigue sirviendo el
+> cliente jugable mientras se migra al nuevo. Las decisiones de diseño, con la
+> evidencia que las respalda, están en [ARQUITECTURA.md](ARQUITECTURA.md).
 
 ---
 
@@ -57,28 +59,48 @@ Todas se ejecutan con el servidor levantado (salvo `diag-world` y `audit-globals
 | `node tools/diag-world.js` | Arranca un mundo contra el mapa real y comprueba que quedó inicializado: mapa, rejilla de colisiones, zonas, áreas de mobs, cofres y entidades estáticas. |
 | `node tools/diag-protocol.js` | Conecta un bot y **vuelca todos los frames** que recibe. Distingue los dos caminos de envío del servidor (directo y por cola), que fallan de formas muy distintas. |
 | `node tools/audit-globals.js` | Detecta dependencias de globales implícitas en `server/js`. Ver *Deuda técnica*. |
+| `node tools/test-engine.js` | **Prueba del motor nuevo.** Arranca el datapack entero y verifica el contrato completo: `config.lua` (incluidas tablas anidadas), `items.xml`, `vocations.xml`, la librería Lua, el registro de contenido y el **despacho de eventos**, comprobando que un script mueve a un jugador y crea items de verdad. |
+| `node tools/bench-lua.js` | Mide el coste de cruzar la frontera JS↔Lua con las tres formas posibles de pasar una entidad. Es la evidencia de por qué la API usa identificadores y el azúcar vive en Lua. |
 
 ---
 
 ## Arquitectura
 
+El proyecto tiene **dos motores** ahora mismo, y es deliberado:
+
+- **`engine/` + `data/`** — el motor nuevo, con la arquitectura de un servidor de
+  Tibia: el motor carga el datapack y es dueño del estado del mundo, el contenido
+  es Lua y XML, y la separación entre motor y contenido es estricta.
+- **`server/`** — el servidor heredado de BrowserQuest, modernizado y con pruebas.
+  Sigue sirviendo el cliente jugable y se irá absorbiendo por el nuevo.
+
+El plan de migración y la justificación de cada decisión están en
+[ARQUITECTURA.md](ARQUITECTURA.md).
+
 ```
-server/js/       servidor de juego (Node, CommonJS)
-  main.js          arranque, config, selección de mundo
+config.lua       configuración del motor (se ejecuta como Lua)
+engine/          MOTOR NUEVO
+  core/            arranque, carga de config, logger
+  lua/             host de Lua y API primitiva
+  data/            lectura de items.xml y data/XML/*.xml
+  world/           estado del mundo
+data/            DATAPACK (lo que toca un administrador de servidor)
+  items/           items.xml
+  XML/             vocaciones, outfits, grupos...
+  lib/core/        la API cómoda de Lua
+  scripts/         contenido programado
+  monsters/        monstruos, en Lua
+  world/           mapas
+client/js/       cliente (AMD/RequireJS, Canvas 2D, 3 capas de canvas)
+shared/js/       gametypes.js, compartido con el servidor heredado
+server/js/       servidor heredado de BrowserQuest
   ws.js            WebSocket (paquete `ws`) + HTTP /status
   staticserver.js  sirve el cliente por HTTP
   worldserver.js   mundo: entidades, zonas, tick a 50 ups, colas de salida
-  player.js        jugador: handshake, movimiento, combate, loot
   map.js           mapa: colisiones, zonas (grupos), checkpoints
-  entity.js → character.js → player.js | mob.js
-  item.js → chest.js
-  area.js → mobarea.js | chestarea.js
   message.js       serialización del protocolo
   format.js        validación de mensajes entrantes
-  logger.js        reemplazo del paquete `log`
-client/js/       cliente (AMD/RequireJS, Canvas 2D, 3 capas de canvas)
-shared/js/       gametypes.js: tipos y códigos de mensaje, compartido
-tools/           pruebas y diagnósticos (arriba)
+tools/           pruebas, diagnósticos y banco de pruebas
 ```
 
 ### Protocolo

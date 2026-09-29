@@ -1,0 +1,44 @@
+<?xml version='1.0' encoding='utf-8'?>
+<!--
+    Definiciones de items, en el dialecto de items.xml de The Forgotten Server.
+
+    En TFS este archivo NO crea los ids: los crea el binario `items.otb` y aquí
+    sólo se completan con nombre y atributos de juego. El importador de OTB
+    todavía no existe en este motor, así que por ahora el XML es la única fuente
+    (ver ARQUITECTURA.md). Cuando llegue, este archivo pasará a tener su papel
+    real: completar, no crear.
+
+    Los atributos son los que lee el motor: `weight`, `attack`, `defense`,
+    `weaponType`... y se consultan desde Lua con Game.getItemAttribute(id, clave).
+-->
+<items>
+
+	<item id="1948" article="a" name="lever" />
+
+	<item id="1387" article="a" name="teleport" />
+
+	<item id="3031" article="a" name="gold coin" plural="gold coins">
+		<attribute key="weight" value="10" />
+	</item>
+
+	<item id="2160" article="a" name="crystal coin" plural="crystal coins">
+		<attribute key="weight" value="10" />
+	</item>
+
+	<item id="2400" article="a" name="magic sword">
+		<attribute key="weight" value="4200" />
+		<attribute key="attack" value="48" />
+		<attribute key="defense" value="35" />
+		<attribute key="weaponType" value="sword" />
+		<attribute key="slotType" value="hand" />
+	</item>
+
+	<item id="2376" article="a" name="sword ring">
+		<attribute key="weight" value="90" />
+		<attribute key="slotType" value="ring" />
+	</item>
+
+	<!-- Rango de ids: la misma definición para toda una familia de sprites. -->
+	<item fromid="1950" toid="1954" name="footprint" />
+
+</items>

@@ -1,18 +1,26 @@
 {
     "name": "avillatoro",
-    "version": "0.1.0",
+    "version": "0.2.0",
     "private": true,
-    "description": "MMORPG 2D multijugador estilo Tibia con sprites 2.5D. Derivado de Mozilla BrowserQuest (MPL-2.0).",
+    "description": "MMORPG 2D estilo Tibia con arquitectura de servidor de Tibia: motor, cliente, herramientas y datapack extensible por Lua y XML.",
     "license": "MPL-2.0",
     "engines": {
         "node": ">=20"
     },
     "scripts": {
+        "engine": "node engine/main.js",
         "start": "node server/js/main.js",
-        "dev": "node --watch server/js/main.js",
-        "map": "node tools/processmap.js"
+        "test": "node tools/test-engine.js",
+        "test:legacy": "node tools/smoke-test.js",
+        "check:client": "node tools/check-client.js",
+        "check:world": "node tools/diag-world.js",
+        "check:globals": "node tools/audit-globals.js",
+        "bench:lua": "node tools/bench-lua.js"
     },
     "dependencies": {
+        "fast-xml-parser": "^5.11.2",
+        "fengari": "^0.1.5",
+        "fengari-interop": "^0.1.4",
         "underscore": "^1.13.8",
         "ws": "^8.22.0"
     }

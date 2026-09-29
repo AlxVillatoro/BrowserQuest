@@ -1,0 +1,100 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+    Vocaciones: el ejemplo canónico de definición declarativa.
+
+    `data/XML/` es, en The Forgotten Server, la carpeta de definiciones estáticas
+    del motor: vocaciones, outfits, grupos de permisos, mounts, imbuements y
+    quests. No es contenido de mundo y no lo tocan los scripts.
+
+    El reparto de formatos del proyecto sigue ese criterio: XML para lo
+    declarativo y estable (una tabla de multiplicadores), Lua para lo que lleva
+    lógica. Por eso los monstruos y los hechizos son Lua y las vocaciones no.
+-->
+<vocations>
+
+	<vocation id="0" name="None" description="none" needpremium="0"
+	          gaincap="5" gainhp="5" gainmana="5"
+	          gainhpticks="6" gainmanaticks="6"
+	          gainhpregen="1" gainmanaregen="1"
+	          attackspeed="2000" basespeed="220" soul="0" manamultiplier="1.0">
+		<formula meleeDamage="1.0" distDamage="1.0" wandDamage="1.0"
+		         magDamage="1.0" magHealingDamage="1.0"
+		         defense="1.0" magDefense="1.0" armor="1.0" />
+		<skill id="0" multiplier="1.5" />
+		<skill id="1" multiplier="1.5" />
+		<skill id="2" multiplier="1.5" />
+		<skill id="3" multiplier="1.5" />
+		<skill id="4" multiplier="1.5" />
+		<skill id="5" multiplier="1.5" />
+		<skill id="6" multiplier="1.5" />
+	</vocation>
+
+	<vocation id="1" name="Sorcerer" description="a sorcerer" needpremium="0"
+	          gaincap="10" gainhp="5" gainmana="30"
+	          gainhpticks="12" gainmanaticks="3"
+	          gainhpregen="1" gainmanaregen="2"
+	          attackspeed="2000" basespeed="220" soul="0" manamultiplier="1.1">
+		<formula meleeDamage="1.0" distDamage="1.0" wandDamage="1.0"
+		         magDamage="1.1" magHealingDamage="1.0"
+		         defense="1.0" magDefense="1.0" armor="1.0" />
+		<skill id="0" multiplier="2.0" />
+		<skill id="1" multiplier="2.0" />
+		<skill id="2" multiplier="2.0" />
+		<skill id="3" multiplier="2.0" />
+		<skill id="4" multiplier="1.1" />
+		<skill id="5" multiplier="1.1" />
+		<skill id="6" multiplier="1.1" />
+	</vocation>
+
+	<vocation id="2" name="Druid" description="a druid" needpremium="0"
+	          gaincap="10" gainhp="5" gainmana="30"
+	          gainhpticks="12" gainmanaticks="3"
+	          gainhpregen="1" gainmanaregen="2"
+	          attackspeed="2000" basespeed="220" soul="0" manamultiplier="1.1">
+		<formula meleeDamage="1.0" distDamage="1.0" wandDamage="1.0"
+		         magDamage="1.1" magHealingDamage="1.1"
+		         defense="1.0" magDefense="1.0" armor="1.0" />
+		<skill id="0" multiplier="2.0" />
+		<skill id="1" multiplier="2.0" />
+		<skill id="2" multiplier="2.0" />
+		<skill id="3" multiplier="2.0" />
+		<skill id="4" multiplier="1.1" />
+		<skill id="5" multiplier="1.1" />
+		<skill id="6" multiplier="1.1" />
+	</vocation>
+
+	<vocation id="3" name="Paladin" description="a paladin" needpremium="0"
+	          gaincap="20" gainhp="10" gainmana="15"
+	          gainhpticks="8" gainmanaticks="6"
+	          gainhpregen="1" gainmanaregen="1"
+	          attackspeed="2000" basespeed="220" soul="0" manamultiplier="1.4">
+		<formula meleeDamage="1.0" distDamage="1.1" wandDamage="1.0"
+		         magDamage="1.1" magHealingDamage="1.1"
+		         defense="1.0" magDefense="1.0" armor="1.0" />
+		<skill id="0" multiplier="1.5" />
+		<skill id="1" multiplier="1.5" />
+		<skill id="2" multiplier="1.5" />
+		<skill id="3" multiplier="1.5" />
+		<skill id="4" multiplier="1.4" />
+		<skill id="5" multiplier="1.4" />
+		<skill id="6" multiplier="1.4" />
+	</vocation>
+
+	<vocation id="4" name="Knight" description="a knight" needpremium="0"
+	          gaincap="25" gainhp="15" gainmana="5"
+	          gainhpticks="6" gainmanaticks="12"
+	          gainhpregen="2" gainmanaregen="1"
+	          attackspeed="2000" basespeed="220" soul="0" manamultiplier="3.0">
+		<formula meleeDamage="1.1" distDamage="1.0" wandDamage="1.0"
+		         magDamage="1.0" magHealingDamage="1.0"
+		         defense="1.1" magDefense="1.0" armor="1.1" />
+		<skill id="0" multiplier="1.1" />
+		<skill id="1" multiplier="1.1" />
+		<skill id="2" multiplier="1.1" />
+		<skill id="3" multiplier="1.1" />
+		<skill id="4" multiplier="3.0" />
+		<skill id="5" multiplier="3.0" />
+		<skill id="6" multiplier="3.0" />
+	</vocation>
+
+</vocations>
