@@ -21,6 +21,7 @@
 
 const { Position } = require('../world/position');
 const { normalizeOutfit, canUseOutfit } = require('../world/outfit');
+const { formatWeight } = require('../world/weight');
 
 /** Clase base: lo que comparten jugadores y monstruos. */
 class CreatureWrapper {
@@ -183,10 +184,50 @@ class PlayerWrapper extends CreatureWrapper {
         return this.getInventory().length;
     }
 
-    /** Cuánto dinero lleva encima. */
+    /** Cuanto dinero lleva encima. */
     getMoney() {
         const player = this.world.getPlayer(this.id);
         return player ? this.world.countMoney(player) : 0;
+    }
+
+    // -----------------------------------------------------------------------
+    // Peso
+    // -----------------------------------------------------------------------
+
+    /** Lo que pesa lo que lleva, en las unidades de Tibia (centesimas de onza). */
+    getWeight() {
+        const player = this.world.getPlayer(this.id);
+        return player ? this.world.weightOf(player) : 0;
+    }
+
+    /** Lo que puede cargar. Sale del nivel y la vocacion, no de un campo guardado. */
+    getCapacity() {
+        const player = this.world.getPlayer(this.id);
+        return player ? this.world.capacityOf(player) : 0;
+    }
+
+    /** Cuanto le queda libre. */
+    getFreeCapacity() {
+        return this.getCapacity() - this.getWeight();
+    }
+
+    /** El peso, ya formateado. El contenido no deberia tener que dividir entre cien. */
+    getWeightText() {
+        return formatWeight(this.getWeight());
+    }
+
+    getCapacityText() {
+        return formatWeight(this.getCapacity());
+    }
+
+    /**
+     * Cuanto pesaria un objeto, sin moverlo.
+     *
+     * Es lo que permite a un script comprobar si algo cabe ANTES de darselo a nadie. Sin
+     * esto, lo unico que se puede hacer es darlo y mirar a ver.
+     */
+    getItemWeight(typeId, count) {
+        return this.world.weightOfItem(typeId, count);
     }
 
     /** Cuántos objetos de un tipo lleva. */

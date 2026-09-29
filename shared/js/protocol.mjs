@@ -387,8 +387,21 @@ export const UPDATE_FIELD = {
 
 export const INVENTORY_FIELD = {
     COUNT: 1,
+    /**
+     * Cuánto pesa lo que lleva y cuánto puede cargar.
+     *
+     * Van EN EL MENSAJE DEL INVENTARIO y no en el de estadísticas porque es el inventario
+     * lo que pesa: quien pregunta "¿cuánto llevo?" es el mismo que quiere saber si le cabe
+     * algo más, y partirlo en dos mensajes obligaría al cliente a juntarlos para poder
+     * enseñar una sola línea.
+     *
+     * Las unidades son las de Tibia: centésimas de onza. El cliente las divide para
+     * mostrarlas, que es trabajo de presentación y por tanto suyo.
+     */
+    WEIGHT: 2,
+    CAPACITY: 3,
     /** Donde empieza cada entrada; cada una ocupa cuatro posiciones. */
-    ENTRIES: 2,
+    ENTRIES: 4,
     STRIDE: 4
 };
 

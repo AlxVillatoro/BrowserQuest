@@ -380,12 +380,12 @@ class ViewManager {
 
         // El inventario va con la bienvenida: un jugador que vuelve tiene que ver lo que
         // llevaba ANTES de que pase nada, y si se mandara sólo al cambiar no lo vería
-        // hasta tocar algo.
-        const entries = this.world.inventoryOf(player)
-            .map((entry) => [entry.index, entry.typeId, entry.count, entry.name]);
+        // hasta tocar algo. Lleva también el peso, porque lo que llevas y lo que puedes
+        // llevar son la misma pregunta.
+        const payload = this.world.inventoryPayload(player);
 
-        messages.push(P.message(P.SERVER.INVENTORY, entries.length,
-            ...entries.reduce((flat, entry) => flat.concat(entry), [])));
+        messages.push(P.message(P.SERVER.INVENTORY,
+            payload.count, payload.weight, payload.capacity, ...payload.flat));
 
         return messages;
     }

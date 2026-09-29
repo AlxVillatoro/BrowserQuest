@@ -445,9 +445,20 @@ function main() {
 
         engine.dispatchTalkAction('/i', { playerId: bagPlayer.id, type: 1 });
 
+        // Se buscan los mensajes del jugador y no se coge el ultimo: `/i` manda una linea
+        // por objeto MAS la del peso, asi que el ultimo mensaje ya no es el del objeto.
+        // Mismo fallo que la prueba de red con la respuesta del NPC.
+        const bagMessages = world.messages
+            .filter((m) => m.playerId === bagPlayer.id)
+            .map((m) => m.text);
+
         check('/i lista lo que lleva',
-            /12x gold coin/.test(lastMessage(world, bagPlayer.id)),
-            '"' + lastMessage(world, bagPlayer.id) + '"');
+            bagMessages.some((text) => /12x gold coin/.test(text)),
+            '"' + bagMessages[bagMessages.length - 2] + '"');
+
+        check('y dice cuanto pesa y cuanto puede cargar',
+            bagMessages.some((text) => /Peso: 1\.20 oz de 405\.00 oz/.test(text)),
+            '"' + bagMessages[bagMessages.length - 1] + '"');
 
         // Y la API del envoltorio tiene que ver lo mismo: si el comando y la API
         // discreparan, uno de los dos estaría mirando otro sitio.
@@ -657,7 +668,119 @@ function main() {
     }
 
     // -----------------------------------------------------------------------
-    section('13. Aislamiento');
+    section('13. Peso y capacidad');
+    // -----------------------------------------------------------------------
+
+    {
+        const fmt = require('../engine/world/weight').formatWeight;
+
+        // La capacidad sale del nivel y la VOCACION, y las dos cosas tienen que notarse:
+        // si todas las vocaciones cargaran lo mismo, elegir una no significaria nada.
+        const flaco = world.createPlayer('Flaco', { x: 40, y: 40, z: 7 });
+        flaco.vocation = 'Knight';
+        flaco.level = 8;
+        const caballero = world.capacityOf(flaco);
+
+        flaco.vocation = 'Sorcerer';
+        const mago = world.capacityOf(flaco);
+        flaco.level = 1;
+        const novel = world.capacityOf(flaco);
+
+        check('la capacidad depende del nivel y de la vocacion',
+            fmt(caballero) === '600.00 oz' && fmt(mago) === '480.00 oz' &&
+            novel < mago && mago < caballero,
+            'nivel 8: caballero ' + fmt(caballero) + ', mago ' + fmt(mago) +
+            '; nivel 1 mago: ' + fmt(novel));
+
+        // Las unidades son las de Tibia: centesimas de onza. Comparar onzas con centesimas
+        // daria un limite cien veces mas pequeño, y el fallo se veria como "no puedes con
+        // una espada" en alguien que deberia cargar diez.
+        check('el peso se cuenta por unidad y por cantidad',
+            world.weightOfItem(3031, 1) === 10 &&
+            world.weightOfItem(3031, 100) === 1000 &&
+            world.weightOfItem(2400, 1) === 4200,
+            'moneda 0,10 oz; 100 monedas 10,00 oz; espada 42,00 oz');
+
+        /*
+         * EL NIVEL 1 CARGA 405 OZ Y UNA ESPADA PESA 42, asi que para desbordar hay que
+         * llenarlo antes.
+         *
+         * La primera version de esta prueba daba por hecho que un personaje de nivel 1 no
+         * podia con una espada, y si puede: le caben nueve. La prueba estaba midiendo una
+         * suposicion mia sobre los numeros de Tibia en vez de los numeros.
+         */
+        flaco.vocation = 'None';
+        flaco.level = 1;
+
+        world.giveItem(flaco, 2400, 9);          // 9 * 42 = 378 oz de 405
+
+        const tile = world.map.getOrCreateTile(41, 40, 7);
+        const espada = world.createItem(2400, 1, { x: 41, y: 40, z: 7 });
+
+        const recoger = world.pickUpItem(flaco, 41, 40, 7);
+
+        check('no se recoge lo que no cabe, y el objeto sigue en el suelo',
+            recoger.ok === false && recoger.reason === 'tooHeavy' &&
+            world.countOf(flaco, 2400) === 9 &&
+            tile.getItems().some((item) => item.typeId === 2400),
+            'lleva ' + fmt(world.weightOf(flaco)) + ' de ' + fmt(world.capacityOf(flaco)) +
+            ' y la espada pesa ' + fmt(recoger.weight) + ': no se movio de sitio');
+
+        check('y el motivo dice CUANTO le queda, no solo que no cabe',
+            recoger.free === 40500 - 37800,
+            'le quedan ' + fmt(recoger.free) + ' libres; sin el numero, el jugador ' +
+            'sabe que no puede pero no cuanto soltar, y acaba probando a ciegas');
+
+        world.removeItem(espada.instanceId);
+
+        // --- No comprar lo que no cabe ---
+        const npc = world.getNpc('Herrero');
+        world.giveItem(flaco, 3031, 1000);       // 100 oz mas: 394 de 405
+
+        const dinero = world.countMoney(flaco);
+        const pesoAntes = world.weightOf(flaco);
+        const compra = world.buyFromNpc(flaco, npc, 2400, 1);
+
+        check('no se compra lo que no cabe, y NO se cobra nada',
+            compra.ok === false && compra.reason === 'tooHeavy' &&
+            world.countMoney(flaco) === dinero &&
+            world.weightOf(flaco) === pesoAntes &&
+            world.countOf(flaco, 2400) === 9,
+            'el dinero le llega —tiene ' + dinero + ' y cuesta ' + compra.price +
+            '— pero no le cabe. Y no se le cobro nada');
+
+        // --- Y si cabe, cabe ---
+        //
+        // El nivel se elige a partir de los numeros, no al reves: lleva 478 oz y la espada
+        // pesa 42, asi que hacen falta 520 de capacidad. Con la vocacion `None` son 400 mas
+        // 5 por nivel, o sea nivel 24 o mas. El nivel 20 daba 500 y la compra seguia sin
+        // caber, que es correcto y no era lo que la prueba decia estar midiendo.
+        flaco.level = 30;
+
+        const compraBuena = world.buyFromNpc(flaco, npc, 2400, 1);
+
+        check('al subir de nivel ya le cabe, y entonces si se cobra',
+            compraBuena.ok === true && world.countOf(flaco, 2400) === 10 &&
+            world.countMoney(flaco) === dinero - 1000,
+            'nivel 20: ' + fmt(world.capacityOf(flaco)) + ' de capacidad, y lleva ' +
+            fmt(world.weightOf(flaco)));
+
+        // El envoltorio tiene que ver lo mismo: es lo que permite a un script comprobar si
+        // algo cabe ANTES de darselo a nadie.
+        const envoltorio = engine.registry.entities.player(flaco.id);
+
+        check('el envoltorio permite consultar el peso antes de dar nada',
+            envoltorio.getWeight() === world.weightOf(flaco) &&
+            envoltorio.getCapacity() === world.capacityOf(flaco) &&
+            envoltorio.getFreeCapacity() ===
+                world.capacityOf(flaco) - world.weightOf(flaco),
+            envoltorio.getWeightText() + ' de ' + envoltorio.getCapacityText());
+
+        world.removePlayer(flaco.id);
+    }
+
+    // -----------------------------------------------------------------------
+    section('14. Aislamiento');
     // -----------------------------------------------------------------------
 
     // Se comparan los campos que importan, no el objeto entero. El grafo del mundo

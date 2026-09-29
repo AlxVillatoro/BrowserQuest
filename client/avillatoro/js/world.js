@@ -249,7 +249,20 @@ export class ClientWorld {
                     }
 
                     this.inventory = entries;
-                    events.push({ type: 'inventory', entries: entries });
+
+                    // El peso viene en el mismo mensaje porque es la misma pregunta: lo que
+                    // llevas y lo que puedes llevar. Se guarda crudo, en centésimas de onza,
+                    // y se formatea al pintarlo: el motor manda números y el cliente los
+                    // presenta.
+                    this.weight = message[I.WEIGHT];
+                    this.capacity = message[I.CAPACITY];
+
+                    events.push({
+                        type: 'inventory',
+                        entries: entries,
+                        weight: this.weight,
+                        capacity: this.capacity
+                    });
                     break;
                 }
 

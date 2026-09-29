@@ -156,6 +156,19 @@
 
     #inventory { display: flex; gap: 6px; flex-wrap: wrap; }
 
+    /*
+     * El peso se pone en rojo al acercarse al limite, que es cuando importa. Un numero que
+     * siempre se ve igual deja de mirarse justo cuando hay que mirarlo.
+     */
+    #weight {
+        margin-left: auto;
+        color: #5a5a70;
+        font-variant-numeric: tabular-nums;
+        white-space: nowrap;
+    }
+    #weight.tight { color: #c0a040; }
+    #weight.full { color: #d05050; font-weight: bold; }
+
     #inventory .empty { color: #4a4a5a; font-style: italic; }
 
     #inventory .slot {
@@ -251,6 +264,7 @@
     <div id="inventory-bar">
         <span class="label">llevas:</span>
         <div id="inventory"><div class="empty">no llevas nada</div></div>
+        <span id="weight" title="peso / capacidad">0.00 / 0.00 oz</span>
     </div>
 
     <div id="status">sin conectar</div>

@@ -137,6 +137,7 @@ falta tocar el motor para añadir un hechizo, la arquitectura está mal.
 | NPCs: definiciones, diálogo y paseo | hecho y probado |
 | Importadores OTBM/OTB/DAT/SPR | pendiente |
 | Comercio con NPC (comprar y vender) | hecho y probado |
+| Peso y capacidad | hecho y probado |
 
 ---
 

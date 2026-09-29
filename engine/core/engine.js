@@ -110,6 +110,7 @@ function createEngine(options) {
 
 
     world.outfitTypes = outfitTypes;
+    world.vocations = vocations;
 
     // --- 3. Registro de contenido -----------------------------------------
     const registry = new ScriptRegistry({ world: world, logger: log });

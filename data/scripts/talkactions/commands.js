@@ -150,6 +150,11 @@ module.exports = [
                     entry.name + ' (id ' + entry.typeId + ')');
             });
 
+            // El peso va al final y no al principio: primero se dice QUÉ llevas y después
+            // cuánto pesa, que es el orden en que se piensa la pregunta.
+            player.sendTextMessage('Peso: ' + player.getWeightText() +
+                ' de ' + player.getCapacityText() + '.');
+
             return true;
         }
     }

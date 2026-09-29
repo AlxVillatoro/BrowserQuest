@@ -23,6 +23,7 @@
 const P = require('./protocol');
 const { TALKTYPE } = require('./protocol');
 const { DIRECTION } = require('../world/creature');
+const { formatWeight } = require('../world/weight');
 
 /** Cómo se llama el jugador si no manda nombre. */
 const DEFAULT_PLAYER_NAME = 'Aventurero';
@@ -408,10 +409,15 @@ class GameSession {
         if (!result.ok) {
             // Sólo se responde cuando hay algo que explicar. Recoger de una casilla vacía
             // es normal y no merece un mensaje.
-            if (result.reason === 'tooFar' || result.reason === 'notPickupable') {
-                this.sendText(result.reason === 'tooFar'
-                    ? 'Esta demasiado lejos.'
-                    : 'Eso no se puede recoger.');
+            if (result.reason === 'tooFar') {
+                this.sendText('Esta demasiado lejos.');
+            } else if (result.reason === 'notPickupable') {
+                this.sendText('Eso no se puede recoger.');
+            } else if (result.reason === 'tooHeavy') {
+                // Se dice CUÁNTO falta, no sólo que no cabe: sin el número, el jugador sabe
+                // que no puede pero no cuánto tiene que soltar, y acaba probando a ciegas.
+                this.sendText('No puedes con eso: pesa ' + formatWeight(result.weight) +
+                    ' y te quedan ' + formatWeight(result.free) + ' libres.');
             }
             return { handled: true, action: 'pickup', picked: false, reason: result.reason };
         }
@@ -459,11 +465,10 @@ class GameSession {
      * que lleva y lo que lleva de verdad.
      */
     sendInventory() {
-        const entries = this.world.inventoryOf(this.player)
-            .map((entry) => [entry.index, entry.typeId, entry.count, entry.name]);
+        const payload = this.world.inventoryPayload(this.player);
 
-        return this._send(P.message(P.SERVER.INVENTORY, entries.length,
-            ...entries.reduce((flat, entry) => flat.concat(entry), [])));
+        return this._send(P.message(P.SERVER.INVENTORY,
+            payload.count, payload.weight, payload.capacity, ...payload.flat));
     }
 
     _handleAttack(creatureId) {        const target = this.world.getCreature(Number(creatureId));

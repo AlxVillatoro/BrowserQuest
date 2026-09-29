@@ -113,7 +113,7 @@ class Game {
                 // en negro sin saber qué había pasado.
                 this._showLoginError(event.error);
             } else if (event.type === 'inventory') {
-                this._updateInventory(event.entries);
+                this._updateInventory(event.entries, event.weight, event.capacity);
             } else if (event.type === 'death') {
                 // El motor avisa por separado del texto, así que el cliente puede
                 // reaccionar sin tener que interpretar el mensaje. Aquí basta con
@@ -126,10 +126,27 @@ class Game {
     }
 
     /** Pinta la lista de lo que lleva el jugador. */
-    _updateInventory(entries) {
+    _updateInventory(entries, weight, capacity) {
         const box = document.getElementById('inventory');
         if (!box) {
             return;
+        }
+
+        /*
+         * El peso va SIEMPRE, aunque no lleves nada.
+         *
+         * Es lo primero que se mira cuando algo no se puede recoger, así que tiene que
+         * estar visible sin tener que abrir nada ni escribir un comando. Y se enseña en
+         * cuanto se acerca al límite, con el número exacto, porque "no te cabe" sin decir
+         * cuánto falta obliga a probar a ciegas.
+         */
+        const weightBox = document.getElementById('weight');
+        if (weightBox && weight !== undefined) {
+            const oz = (value) => (Number(value) / 100).toFixed(2);
+            const lleno = capacity > 0 ? weight / capacity : 0;
+
+            weightBox.textContent = oz(weight) + ' / ' + oz(capacity) + ' oz';
+            weightBox.className = lleno >= 0.9 ? 'full' : (lleno >= 0.7 ? 'tight' : '');
         }
 
         if (entries.length === 0) {

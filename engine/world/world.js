@@ -21,6 +21,7 @@
  */
 
 const { Position, DIRECTIONS, directionFrom } = require('./position');
+const { UNITS_PER_OUNCE } = require('./weight');
 const { Item } = require('./item');
 const { Player, Monster, DIRECTION, resetIdCounter } = require('./creature');
 const { createNpc } = require('./npc');
@@ -71,6 +72,22 @@ class World {
          * Tibia: 3031, la moneda de oro.
          */
         this.moneyItemId = 3031;
+
+        /**
+         * Lo que puede cargar cualquier criatura antes de contar su vocación.
+         *
+         * Son 4 onzas en las unidades de Tibia (centésimas de onza). El número es el suyo:
+         * con él, un personaje de nivel 1 carga 4,05 oz si es mago y 4,25 si es caballero, y
+         * las diferencias entre vocaciones sólo se notan al subir de nivel, que es cuando
+         * tienen que notarse.
+         */
+        this.baseCapacityOz = 400;
+
+        /** Las vocaciones, para saber cuánta capacidad gana cada nivel. Las pone el motor. */
+        this.vocations = null;
+
+        /** Lo que gana por nivel una criatura sin vocacion conocida. */
+        this.defaultGainCap = 5;
 
         this.map = null;
 
@@ -659,6 +676,27 @@ class World {
             return { ok: false, reason: 'notPickupable' };
         }
 
+        /*
+         * ¿CABE?
+         *
+         * Se comprueba ANTES de tocar el inventario, igual que en el comercio: si se metiera
+         * y luego se deshiciera, un fallo a mitad dejaría el objeto en los dos sitios o en
+         * ninguno. Preguntar antes es más simple y no puede quedar a medias.
+         *
+         * El peso se devuelve en el motivo para que el mensaje pueda decir CUÁNTO sobra, que
+         * es lo que el jugador necesita para decidir qué soltar.
+         */
+        const weight = this.weightOfItem(top.typeId, top.count);
+
+        if (!this.canCarry(creature, weight)) {
+            return {
+                ok: false,
+                reason: 'tooHeavy',
+                weight: weight,
+                free: this.capacityOf(creature) - this.weightOf(creature)
+            };
+        }
+
         if (!(creature.inventory instanceof Array)) {
             creature.inventory = [];
         }
@@ -1210,6 +1248,20 @@ class World {
             };
         }
 
+        // El peso se mira DESPUÉS del dinero, y el orden de los mensajes importa: a quien no
+        // le llega el dinero no le sirve saber que además no le cabe, y al revés sí, porque
+        // ya tiene el dinero y lo que le falta es sitio.
+        const weight = this.weightOfItem(offer.typeId, amount);
+
+        if (!this.canCarry(player, weight)) {
+            return {
+                ok: false, reason: 'tooHeavy',
+                weight: weight,
+                free: this.capacityOf(player) - this.weightOf(player),
+                price: total
+            };
+        }
+
         const paid = this.takeItem(player, this.moneyItemId, total);
         if (paid !== total) {
             // No debería pasar: se acaba de contar. Si pasa, se devuelve lo cobrado en
@@ -1263,7 +1315,110 @@ class World {
             .reduce((total, entry) => total + entry.count, 0);
     }
 
-    /** Todo lo que lleva encima una criatura, para el comando de listar. */
+    // =======================================================================
+    // Peso y capacidad
+    // =======================================================================
+
+    /**
+     * Cuánto pesa todo lo que lleva encima.
+     *
+     * Las unidades son las de Tibia: centésimas de onza. Una moneda son 10, o sea 0,10 oz,
+     * y una espada 4200, o sea 42 oz. Se guardan así y no en onzas porque es lo que dicen
+     * los archivos de Tibia, y convertir en la frontera obliga a recordar en qué unidad
+     * está cada número.
+     *
+     * Un objeto SIN peso declarado pesa 0, y por eso `items.xml` puede ir declarando pesos
+     * poco a poco sin que lo que falte se vuelva impagable.
+     */
+    weightOf(creature) {
+        const inventory = creature.inventory instanceof Array ? creature.inventory : [];
+
+        return inventory.reduce((total, entry) => {
+            const definition = this.itemTypes.get(entry.typeId);
+            const unit = definition && definition.attributes && definition.attributes.weight
+                ? Number(definition.attributes.weight)
+                : 0;
+
+            return total + unit * Math.max(1, entry.count);
+        }, 0);
+    }
+
+    /**
+     * Cuánto puede cargar.
+     *
+     * Es DERIVADA del nivel y la vocación, no un campo que se guarde. Guardarla sería una
+     * segunda fuente de verdad: el día que alguien subiera de nivel sin actualizarla, el
+     * personaje cargaría lo que dijera el número viejo, y no habría forma de saber cuál de
+     * los dos es el bueno. Es la misma decisión que con el dinero.
+     *
+     * La fórmula es la de Tibia: una base fija más lo que aporta cada nivel según la
+     * vocación. Un caballero (gaincap 25) acaba cargando cinco veces más que un mago
+     * (gaincap 5), que es exactamente lo que hace que elegir vocación importe.
+     */
+    capacityOf(creature) {
+        // La fórmula está en ONZAS —400 más lo que aporte cada nivel— y el peso se guarda en
+        // centésimas de onza. La conversión se hace AQUÍ, una vez, y no dejando el resultado
+        // en onzas: comparar onzas con centésimas daría un límite cien veces más pequeño del
+        // que toca, y el fallo se vería como "no puedes con una espada" en un personaje que
+        // debería cargar diez.
+        const ounces = this.baseCapacityOz +
+            Math.max(1, creature.level || 1) * this.gainCapOf(creature);
+
+        return ounces * UNITS_PER_OUNCE;
+    }
+
+    /**
+     * Lo que aporta cada nivel esta criatura, según su vocación.
+     *
+     * Se busca POR NOMBRE, y no por identificador como está cargado `vocations.xml`. La
+     * primera versión hacía `map.get(creature.vocation)` sobre un mapa indexado por id, así
+     * que siempre devolvía indefinido y las cinco vocaciones acababan con la misma capacidad:
+     * un mago cargaba lo mismo que un caballero y el fallo no daba ningún error.
+     */
+    gainCapOf(creature) {
+        if (!this.vocations || this.vocations.size === 0) {
+            return this.defaultGainCap;
+        }
+
+        // Son cinco vocaciones: recorrerlas es más barato que mantener un segundo índice que
+        // se pueda quedar desincronizado con el primero.
+        for (const vocation of this.vocations.values()) {
+            if (vocation.name === creature.vocation) {
+                return vocation.gainCap === undefined || Number(vocation.gainCap) <= 0
+                    ? this.defaultGainCap
+                    : Number(vocation.gainCap);
+            }
+        }
+
+        // Sin vocación conocida se usa la más restrictiva y no la más generosa: si un datapack
+        // se equivoca en el nombre de una vocación, es mejor que los personajes carguen poco
+        // —y que se note— a que carguen sin límite y nadie se entere.
+        return this.defaultGainCap;
+    }
+
+    /** ¿Cabe esto en lo que le queda libre? */
+    canCarry(creature, extraWeight) {
+        return this.weightOf(creature) + Number(extraWeight) <= this.capacityOf(creature);
+    }
+
+    /**
+     * Cuánto pesaría meter `count` objetos de este tipo.
+     *
+     * Se calcula ANTES de meterlos, que es lo que permite comprobarlo todo antes de tocar
+     * nada. Preguntar cuánto pesa algo después de haberlo metido no sirve para decidir si
+     * se mete.
+     */
+    weightOfItem(typeId, count) {
+        const definition = this.itemTypes.get(Number(typeId));
+        const unit = definition && definition.attributes && definition.attributes.weight
+            ? Number(definition.attributes.weight)
+            : 0;
+
+        return unit * Math.max(1, Number(count) || 1);
+    }
+
+    /**
+     * Todo lo que lleva encima una criatura, para el comando de listar. */
     inventoryOf(creature) {        return (creature.inventory instanceof Array ? creature.inventory : [])
             .map((entry, index) => {
                 const definition = this.itemTypes.get(entry.typeId);
@@ -1302,6 +1457,28 @@ class World {
         });
 
         this.emit('onTextMessage', player, String(text));
+    }
+
+    /**
+     * El inventario, listo para mandarlo.
+     *
+     * Existe para que la sesión y el mensaje de bienvenida no armen el mismo mensaje por
+     * separado: son dos sitios que tienen que producir EXACTAMENTE lo mismo, y dos copias
+     * de una estructura son dos sitios donde equivocarse. Ya pasó con el reparto de abajo y
+     * arriba de los tiles, que hubo que añadir en los dos.
+     *
+     * @returns {{count: number, weight: number, capacity: number, flat: Array}}
+     */
+    inventoryPayload(creature) {
+        const entries = this.inventoryOf(creature)
+            .map((entry) => [entry.index, entry.typeId, entry.count, entry.name]);
+
+        return {
+            count: entries.length,
+            weight: this.weightOf(creature),
+            capacity: this.capacityOf(creature),
+            flat: entries.reduce((all, entry) => all.concat(entry), [])
+        };
     }
 
     /**
