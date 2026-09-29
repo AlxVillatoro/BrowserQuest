@@ -19,7 +19,6 @@
 
 const http = require('http');
 const path = require('path');
-const url = require('url');
 const { WebSocketServer } = require('ws');
 const cls = require('./lib/class');
 const Utils = require('./utils');
@@ -95,7 +94,15 @@ WS.WebsocketServer = Server.extend({
         const self = this;
 
         this._httpServer = http.createServer(function (request, response) {
-            const pathname = url.parse(request.url).pathname;
+            // URL de WHATWG en vez de url.parse(): elimina el aviso de
+            // deprecación DEP0169 y el parseo no estandarizado. La base es
+            // ficticia porque sólo se usa la ruta.
+            let pathname;
+            try {
+                pathname = new URL(request.url, 'http://localhost').pathname;
+            } catch (e) {
+                pathname = '/';
+            }
 
             if (pathname === '/status' && self.status_callback) {
                 const body = self.status_callback();
