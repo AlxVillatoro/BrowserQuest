@@ -864,7 +864,7 @@ function main() {
         world.removePlayer(hero.id);
     }
 
-    section('14. Aislamiento');
+    section('15. Aislamiento');
     // -----------------------------------------------------------------------
 
     // Se comparan los campos que importan, no el objeto entero. El grafo del mundo
