@@ -466,7 +466,58 @@ function main() {
     }
 
     // =======================================================================
-    section('6. Reinicio del MOTOR: el estado sobrevive de verdad');
+    section('6. Caida sin cierre limpio: el WAL tiene que recuperar');
+    // =======================================================================
+
+    {
+        // Se escribe SIN cerrar y se abre una COPIA de los tres archivos. Eso es
+        // exactamente lo que queda cuando un servidor se muere de golpe: la base, el
+        // registro de escritura anticipada y el indice de ese registro. Si el WAL no
+        // sirviera para esto, no serviria para nada.
+        const CRASH = path.join(ROOT, 'data', 'test-crash.db');
+        const CRASH_COPY = path.join(ROOT, 'data', 'test-crash-copy.db');
+
+        [CRASH, CRASH_COPY].forEach((base) => {
+            [base, base + '-wal', base + '-shm'].forEach((file) => {
+                try { fs.unlinkSync(file); } catch (error) { /* no existia */ }
+            });
+        });
+
+        const live = new Database({ file: CRASH }).open();
+        live.createAccount({ name: 'SeCayo', password: 'clave' });
+        const account = live.findAccount('SeCayo');
+        live.createCharacter(account.id, 'Superviviente', { x: 12, y: 13, z: 7 });
+
+        // NO se llama a `close()`: se copian los archivos tal y como estan.
+        [CRASH, CRASH + '-wal', CRASH + '-shm'].forEach((file) => {
+            if (fs.existsSync(file)) {
+                fs.copyFileSync(file, file.replace('test-crash', 'test-crash-copy'));
+            }
+        });
+
+        const recovered = new Database({ file: CRASH_COPY }).open();
+        const found = recovered.findCharacterByName('Superviviente');
+
+        check('una base sin cerrar se recupera desde el WAL',
+            found !== null && found.pos_x === 12 && found.pos_y === 13,
+            found ? 'el personaje sobrevivio a la caida en (' + found.pos_x + ',' +
+                found.pos_y + ')' : 'no se recupero');
+
+        check('y la cuenta tambien',
+            recovered.authenticate('SeCayo', 'clave') !== null);
+
+        recovered.close();
+        live.close();
+
+        [CRASH, CRASH_COPY].forEach((base) => {
+            [base, base + '-wal', base + '-shm'].forEach((file) => {
+                try { fs.unlinkSync(file); } catch (error) { /* ya no esta */ }
+            });
+        });
+    }
+
+    // =======================================================================
+    section('7. Reinicio del MOTOR: el estado sobrevive de verdad');
     // =======================================================================
 
     {
