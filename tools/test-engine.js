@@ -124,17 +124,95 @@ function main() {
     // -----------------------------------------------------------------------
 
     check('los modulos se cargan sin paso manual de registro',
-        engine.stats.contentFiles === 6 && engine.stats.contentDefinitions === 7,
+        engine.stats.contentFiles === 6 && engine.stats.contentDefinitions === 8,
         engine.stats.contentFiles + ' modulos, ' + engine.stats.contentDefinitions + ' definiciones');
 
     check('definiciones por tipo',
         engine.stats.byKind.action === 1 && engine.stats.byKind.movement === 2 &&
-        engine.stats.byKind.talkaction === 2 && engine.stats.byKind.monster === 1 &&
+        engine.stats.byKind.talkaction === 3 && engine.stats.byKind.monster === 1 &&
         engine.stats.byKind.event === 1,
         JSON.stringify(engine.stats.byKind));
 
     check('un modulo puede declarar varios registros con un array',
-        engine.stats.talkActions === 2, '/pos y /item, ambos en commands.js');
+        engine.stats.talkActions === 3, '/pos, /item y /outfit, los tres en commands.js');
+
+    // --- Aspectos ---
+
+    check('se cargan los aspectos de outfits.xml',
+        engine.stats.outfits === 15 && world.outfitTypes.has(136),
+        engine.stats.outfits + ' aspectos, y el 136 es "' +
+        (world.outfitTypes.get(136) ? world.outfitTypes.get(136).name : '?') + '"');
+
+    check('un aspecto sabe si es premium y si esta disponible',
+        world.outfitTypes.get(132).premium === true &&
+        world.outfitTypes.get(137).unlocked === false,
+        'el 132 es premium y el 137 esta bloqueado');
+
+    check('y sabe que anadidos tiene',
+        world.outfitTypes.get(128).addons.size === 2 &&
+        world.outfitTypes.get(133).addons.size === 0,
+        'el Citizen tiene dos y el Summoner ninguno');
+
+    {
+        // El comando /outfit, con los nombres de TFS.
+        const outfitPlayer = world.createPlayer('Vestido', { x: 40, y: 40, z: 7 });
+
+        const sayOutfit = engine.dispatchTalkAction('/outfit 130 100 50 20 10 1', { playerId: outfitPlayer.id, type: 1 });
+
+        check('el comando /outfit cambia el aspecto',
+            sayOutfit.handled === true &&
+            outfitPlayer.outfit.lookType === 130 &&
+            outfitPlayer.outfit.head === 100 &&
+            outfitPlayer.outfit.addons === 1,
+            'aspecto ' + outfitPlayer.outfit.lookType + ', colores ' +
+            outfitPlayer.outfit.head + '/' + outfitPlayer.outfit.body + '/' +
+            outfitPlayer.outfit.legs + '/' + outfitPlayer.outfit.feet +
+            ', anadidos ' + outfitPlayer.outfit.addons);
+
+        check('y lo confirma con la API de TFS',
+            lastMessage(world, outfitPlayer.id).indexOf('Aspecto: tipo 130') === 0,
+            '"' + lastMessage(world, outfitPlayer.id) + '"');
+
+        // LOS COLORES VIENEN DEL CLIENTE, asi que hay que acotarlos. Un indice 300 no
+        // existe en una paleta de 133 colores, y si el motor lo dejara pasar, cada
+        // cliente tendria que defenderse por su cuenta.
+        engine.dispatchTalkAction('/outfit 131 300 -5 999 58', { playerId: outfitPlayer.id, type: 1 });
+
+        check('un color fuera de la paleta se acota en vez de rechazarse',
+            outfitPlayer.outfit.head === 132 &&
+            outfitPlayer.outfit.body === 0 &&
+            outfitPlayer.outfit.legs === 132,
+            '300 -> 132, -5 -> 0, 999 -> 132: el motor valida y el cliente dibuja');
+
+        // Un aspecto que no existe SI se rechaza, porque no es un dato fuera de rango:
+        // es una apariencia que el cliente no sabria dibujar.
+        const badOutfit = engine.dispatchTalkAction('/outfit 60000 10 10 10 10', { playerId: outfitPlayer.id, type: 1 });
+
+        check('un aspecto que no existe se rechaza',
+            outfitPlayer.outfit.lookType === 131 &&
+            lastMessage(world, outfitPlayer.id).indexOf('No se puede') === 0,
+            '"' + lastMessage(world, outfitPlayer.id) + '"');
+
+        check('y un aspecto bloqueado tambien',
+            engine.dispatchTalkAction('/outfit 137 10 10 10 10', { playerId: outfitPlayer.id, type: 1 }).handled === true &&
+            outfitPlayer.outfit.lookType === 131 &&
+            /bloqueado/.test(lastMessage(world, outfitPlayer.id)),
+            '"' + lastMessage(world, outfitPlayer.id) + '"');
+
+        check('los nombres de TFS y los de dentro son intercambiables',
+            (() => {
+                const wrapper = engine.registry.entities.player(outfitPlayer.id);
+                const a = wrapper.setOutfit({ lookType: 129, lookHead: 11 }, false);
+                const b = wrapper.getOutfit();
+                const c = wrapper.setOutfit({ lookType: 128, head: 22 }, false);
+                const d = wrapper.getOutfit();
+                return a.ok && b.lookHead === 11 && c.ok && d.lookHead === 22;
+            })(),
+            'lookHead y head significan lo mismo, y obligar a recordar cual toca en ' +
+            'cada sitio es una trampa');
+
+        world.removePlayer(outfitPlayer.id);
+    }
 
     const rat = world.monsterTypes.get('Rat');
     check('el monstruo llega con su estructura anidada',
@@ -310,7 +388,7 @@ function main() {
         before.definitions + ' definiciones antes y despues');
 
     check('recargar devuelve el contenido a su estado de arranque',
-        engine.registry.actions.size === 1 && engine.registry.talkActions.length === 2,
+        engine.registry.actions.size === 1 && engine.registry.talkActions.length === 3,
         'las definiciones de prueba (que no son ficheros) desaparecen, como en un /reload real');
 
     check('recargar vuelve a dejar el contenido funcional',

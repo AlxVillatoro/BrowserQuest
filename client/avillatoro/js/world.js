@@ -12,6 +12,27 @@
  * duración la pone el motor, que es lo importante.
  */
 
+/*
+ * El protocolo se importa con una ruta RELATIVA y no con `/shared/js/protocol.mjs`.
+ *
+ * Las dos funcionan en el navegador, pero sólo la relativa funciona además en Node, que
+ * es donde corren las pruebas: una ruta que empieza por `/` es una ruta del MONTAJE del
+ * servidor, y en el disco no significa nada. Importarlo así es lo que permite que la
+ * prueba de extremo a extremo use ESTE archivo tal cual, sin copiarlo ni adaptarlo.
+ *
+ * Desde `client/avillatoro/js/`, tres niveles arriba es la raíz del proyecto, y de ahí
+ * a `shared/js/protocol.mjs`. En el navegador, con la base `/avillatoro/js/`, los tres
+ * `../` se salen de la raíz y quedan en `/shared/js/protocol.mjs`, que es exactamente
+ * donde está montado.
+ */
+import {
+    CREATURE_FIELD as F,
+    TILE_FIELD as T,
+    MOVE_FIELD as M,
+    LOGIN_FIELD as L,
+    UPDATE_FIELD as U
+} from '../../../shared/js/protocol.mjs';
+
 /**
  * Una criatura que se está moviendo.
  *
@@ -121,18 +142,18 @@ export class ClientWorld {
                     break;
 
                 case P.SERVER.LOGIN_OK:
-                    this.playerId = message[1];
+                    this.playerId = message[L.ID];
                     this.player = {
-                        id: message[1],
-                        name: message[2],
-                        x: message[3],
-                        y: message[4],
-                        z: message[5],
-                        health: message[6],
-                        maxHealth: message[7],
-                        level: message[8],
-                        experience: message[9],
-                        vocation: message[10]
+                        id: message[L.ID],
+                        name: message[L.NAME],
+                        x: message[L.X],
+                        y: message[L.Y],
+                        z: message[L.Z],
+                        health: message[L.HEALTH],
+                        maxHealth: message[L.MAX_HEALTH],
+                        level: message[L.LEVEL],
+                        experience: message[L.EXPERIENCE],
+                        vocation: message[L.VOCATION]
                     };
                     events.push({ type: 'login', player: this.player });
                     break;
@@ -221,16 +242,16 @@ export class ClientWorld {
     }
 
     _setTile(message, now) {
-        const x = message[1];
-        const y = message[2];
-        const z = message[3];
-        const ground = message[4];
-        const downCount = message[5];
-        const totalCount = message[6];
+        const x = message[T.X];
+        const y = message[T.Y];
+        const z = message[T.Z];
+        const ground = message[T.GROUND];
+        const downCount = message[T.DOWN_COUNT];
+        const totalCount = message[T.ITEM_COUNT];
 
         const items = [];
         for (let index = 0; index < totalCount; index += 1) {
-            const base = 7 + index * 3;
+            const base = T.ITEMS + index * T.ITEM_STRIDE;
             items.push({
                 id: message[base],
                 count: message[base + 1],
@@ -250,23 +271,33 @@ export class ClientWorld {
     }
 
     _addCreature(message, now) {
-        const id = message[1];
+        const id = message[F.ID];
+
         const creature = {
             id: id,
-            outfit: message[2],
-            name: message[3],
-            x: message[4],
-            y: message[5],
-            z: message[6],
-            direction: message[7],
-            health: message[8],
-            kind: message[9],
+            // El aspecto: qué sprites y de qué colores. El cliente los resuelve con su
+            // paleta; el motor sólo manda los números.
+            outfit: {
+                lookType: message[F.LOOK_TYPE],
+                head: message[F.HEAD],
+                body: message[F.BODY],
+                legs: message[F.LEGS],
+                feet: message[F.FEET],
+                addons: message[F.ADDONS]
+            },
+            name: message[F.NAME],
+            x: message[F.X],
+            y: message[F.Y],
+            z: message[F.Z],
+            direction: message[F.DIRECTION],
+            health: message[F.HEALTH],
+            kind: message[F.KIND],
             moving: null,
             isPlayer: id === this.playerId
         };
 
-        // Si ya existía (por ejemplo, el jugador se recibe a sí mismo y luego llega
-        // otra vez), se conserva el movimiento en curso para no dar un salto.
+        // Si ya existía (el jugador se recibe a sí mismo y luego llega otra vez), se
+        // conserva el movimiento en curso para no dar un salto.
         const previous = this.creatures.get(id);
         if (previous && previous.moving) {
             creature.moving = previous.moving;
@@ -276,12 +307,12 @@ export class ClientWorld {
     }
 
     _moveCreature(message, now) {
-        const id = message[1];
+        const id = message[M.ID];
         const creature = this.creatures.get(id);
 
-        const to = { x: message[5], y: message[6], z: message[7] };
-        const direction = message[8];
-        const duration = message[9];
+        const to = { x: message[M.TO_X], y: message[M.TO_Y], z: message[M.TO_Z] };
+        const direction = message[M.DIRECTION];
+        const duration = message[M.DURATION];
 
         if (!creature) {
             // Se movió una criatura que no conocíamos. Puede pasar si el mensaje de
@@ -289,7 +320,7 @@ export class ClientWorld {
             this.creatures.set(id, {
                 id: id, name: '?', x: to.x, y: to.y, z: to.z,
                 direction: direction, health: 100, kind: 0,
-                moving: null, isPlayer: id === this.playerId
+                outfit: null, moving: null, isPlayer: id === this.playerId
             });
             return;
         }
@@ -298,11 +329,12 @@ export class ClientWorld {
         // si el servidor va por delante, interpolar desde donde el cliente cree que
         // está produciría un salto.
         creature.moving = new MovingCreature(
-            { x: message[2], y: message[3] }, to, direction, duration, now);
+            { x: message[M.FROM_X], y: message[M.FROM_Y] },
+            to, direction, duration, now);
 
-        creature.x = message[2];
-        creature.y = message[3];
-        creature.z = message[7];
+        creature.x = message[M.FROM_X];
+        creature.y = message[M.FROM_Y];
+        creature.z = message[M.TO_Z];
         creature.direction = direction;
 
         // El jugador propio se interpola IGUAL que los demás, y eso es una decisión
@@ -320,12 +352,12 @@ export class ClientWorld {
     }
 
     _updateCreature(message) {
-        const creature = this.creatures.get(message[1]);
+        const creature = this.creatures.get(message[U.ID]);
         if (!creature) {
             return;
         }
-        creature.direction = message[2];
-        creature.health = message[3];
+        creature.direction = message[U.DIRECTION];
+        creature.health = message[U.HEALTH];
     }
 
     // -----------------------------------------------------------------------

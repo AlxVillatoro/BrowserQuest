@@ -317,7 +317,74 @@ async function main() {
     }
 
     // =======================================================================
-    section('6. Desconexion');
+    section('6. Los comandos y los mensajes LLEGAN al cliente');
+    // =======================================================================
+
+    {
+        /*
+         * ESTA SECCIÓN EXISTE POR DOS FALLOS QUE NO SE VEÍAN DESDE NINGUNA OTRA PRUEBA.
+         *
+         * Los talkactions estaban registrados y probados, y el cliente no los alcanzaba
+         * nunca: el mensaje de chat se difundía como habla y no se despachaba. Y
+         * `sendTextMessage` sólo apuntaba el texto en una lista interna, así que todo lo
+         * que el contenido le decía a un jugador era invisible en el juego.
+         *
+         * Los dos son el mismo tipo de fallo: piezas que funcionan por separado y no
+         * están conectadas. Cada mitad pasaba su prueba y el camino completo no existía,
+         * que es exactamente lo que una prueba de extremo a extremo tiene que cubrir.
+         */
+        const session = engine.sessions.get(loginOk[1]);
+        const textsBefore = client.count(P.SERVER.TEXT);
+
+        session.handle([P.CLIENT.SAY, '/outfit 131 100 50 20 115 3']);
+        await sleep(250);
+
+        check('un comando cambia el aspecto del jugador',
+            session.player.outfit.lookType === 131 &&
+            session.player.outfit.addons === 3,
+            'aspecto ' + session.player.outfit.lookType + ' con anadidos ' +
+            session.player.outfit.addons);
+
+        const confirmation = client.received
+            .filter((m) => m[0] === P.SERVER.TEXT)
+            .slice(textsBefore)
+            .pop();
+
+        check('Y LA CONFIRMACION LLEGA AL CLIENTE',
+            confirmation !== undefined && /Aspecto: tipo 131/.test(confirmation[2]),
+            confirmation ? '"' + confirmation[2] + '"'
+                : 'no llego nada: el mensaje se quedo en una lista interna');
+
+        // Un comando NO se difunde como habla: no es una frase.
+        const saysBefore = client.count(P.SERVER.CREATURE_SAY);
+        session.handle([P.CLIENT.SAY, '/pos']);
+        await sleep(250);
+
+        check('un comando no se difunde como si lo hubieras dicho',
+            client.count(P.SERVER.CREATURE_SAY) === saysBefore,
+            'un comando no es una frase, y verlo en el chat seria raro');
+
+        const posAnswer = client.received.filter((m) => m[0] === P.SERVER.TEXT).pop();
+
+        check('y su respuesta tambien llega',
+            /Posicion:/.test(posAnswer ? posAnswer[2] : ''),
+            '"' + (posAnswer ? posAnswer[2] : 'no llego') + '"');
+
+        // Una frase normal SI se difunde, y con el nombre de quien la dice.
+        const saysBeforeTalk = client.count(P.SERVER.CREATURE_SAY);
+        session.handle([P.CLIENT.SAY, 'hola a todos']);
+        await sleep(250);
+
+        const said = client.received.filter((m) => m[0] === P.SERVER.CREATURE_SAY)
+            .slice(saysBeforeTalk).pop();
+
+        check('una frase normal si se difunde como habla',
+            said !== undefined && said[3] === 'hola a todos',
+            said ? '"' + said[2] + ': ' + said[3] + '"' : 'no llego');
+    }
+
+    // =======================================================================
+    section('7. Desconexion');
     // =======================================================================
 
     {
@@ -342,7 +409,7 @@ async function main() {
     }
 
     // =======================================================================
-    section('7. Cierre ordenado');
+    section('8. Cierre ordenado');
     // =======================================================================
 
     {

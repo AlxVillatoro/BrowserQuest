@@ -20,6 +20,7 @@
  */
 
 const { Position } = require('../world/position');
+const { normalizeOutfit, canUseOutfit } = require('../world/outfit');
 
 /** Clase base: lo que comparten jugadores y monstruos. */
 class CreatureWrapper {
@@ -158,6 +159,75 @@ class PlayerWrapper extends CreatureWrapper {
         }
         const value = player.storages.get(String(key));
         return value === undefined ? null : value;
+    }
+
+    // -----------------------------------------------------------------------
+    // Aspecto
+    // -----------------------------------------------------------------------
+
+    /**
+     * El aspecto actual, con LOS NOMBRES DE TFS.
+     *
+     * Por dentro el motor usa `head`, `body`, `legs`, `feet` y `addons`, que se leen
+     * mejor. De cara a los scripts se usan `lookHead`, `lookBody`... porque es lo que
+     * espera cualquiera que venga de The Forgotten Server, y este proyecto lo toma como
+     * referencia. La traducción se hace aquí, en un solo sitio, y no repartida por todo
+     * el contenido.
+     */
+    getOutfit() {
+        const player = this.world.getCreature(this.id);
+        if (!player) {
+            return null;
+        }
+
+        const outfit = player.outfit || {};
+
+        return {
+            lookType: outfit.lookType,
+            lookHead: outfit.head,
+            lookBody: outfit.body,
+            lookLegs: outfit.legs,
+            lookFeet: outfit.feet,
+            lookAddons: outfit.addons
+        };
+    }
+
+    /**
+     * Cambia el aspecto.
+     *
+     * Acepta los nombres de TFS y también los de dentro, porque escribir
+     * `{lookType: 136, lookHead: 78}` y `{lookType: 136, head: 78}` son la misma
+     * intención y obligar a recordar cuál toca en cada sitio es una trampa.
+     *
+     * @param {Object} outfit
+     * @param {boolean} [check] si comprobar que el aspecto existe y se puede usar
+     * @returns {{ok: boolean, reason: string|null}}
+     */
+    setOutfit(outfit, check) {
+        const player = this.world.getPlayer(this.id);
+        if (!player) {
+            return { ok: false, reason: 'no existe el jugador' };
+        }
+
+        const source = outfit || {};
+        const candidate = normalizeOutfit({
+            lookType: source.lookType,
+            head: source.lookHead !== undefined ? source.lookHead : source.head,
+            body: source.lookBody !== undefined ? source.lookBody : source.body,
+            legs: source.lookLegs !== undefined ? source.lookLegs : source.legs,
+            feet: source.lookFeet !== undefined ? source.lookFeet : source.feet,
+            addons: source.lookAddons !== undefined ? source.lookAddons : source.addons
+        });
+
+        if (check !== false) {
+            const allowed = canUseOutfit(candidate, this.world.outfitTypes, false);
+            if (!allowed.ok) {
+                return { ok: false, reason: allowed.reason };
+            }
+        }
+
+        player.outfit = candidate;
+        return { ok: true, reason: null };
     }
 }
 

@@ -52,6 +52,12 @@ Las flechas o WASD mueven (con dos teclas a la vez, en diagonal), Intro abre el
 chat, Espacio mira el tile donde pisas, y un clic ataca a la criatura que haya
 debajo o mira el suelo.
 
+Comandos de chat: `/pos` (dónde estás), `/item <id>` (crear un objeto) y
+`/outfit <tipo> [cabeza] [cuerpo] [piernas] [pies] [añadidos]`, por ejemplo
+`/outfit 131 100 50 20 115 3`. Los colores son **índices de una paleta de 133** que
+tiene el cliente, no valores de color: el motor manda números y el cliente los
+resuelve, igual que con los sprites de los objetos.
+
 Para apuntar a otro motor sin tocar el código:
 `.../avillatoro/index.html?ws=otra-maquina:8080`.
 
@@ -130,7 +136,7 @@ Todas se ejecutan con el servidor levantado (salvo `diag-world` y `audit-globals
 | `node tools/test-render.mjs` | **Prueba de la lógica de dibujo del cliente (39 comprobaciones).** El 2.5D no son píxeles: son dos decisiones —cuánto se desplaza cada planta y en qué orden se pinta— y las dos son cálculo puro, así que se verifican **sin abrir un navegador**. Comprueba que una planta por encima se corre abajo-derecha (para que una plataforma tape el suelo que tiene delante), que el suelo se recorre por diagonales, que dentro de un tile el orden es suelo → items de abajo → criaturas → items de arriba, y que **el cliente no se inventa el terreno que no ha recibido**. |
 | `node tools/test-client-e2e.mjs` | **Prueba de extremo a extremo DEL CLIENTE (23 comprobaciones).** Usa **los mismos módulos que carga el navegador** (`world.js`, `camera.js`, `drawlist.js`) contra un servidor de verdad escuchando en un puerto. Es lo que detecta las discrepancias que ninguna prueba por partes puede ver: un campo en la posición equivocada del mensaje, un opcode sin manejar, un orden que no cuadra. Se ejecuta sin navegador porque la lógica del cliente es cálculo puro; lo único que no cubre son las llamadas al lienzo. |
 | `node tools/check-avillatoro-client.js` | Comprueba que el cliente y el editor pueden cargar **todos** sus módulos. Los imports usan rutas del montaje del servidor (`/avillatoro/...`, `/shared/...`, `/js/...`), y un error de escritura en una de ellas no se ve hasta abrir el navegador, donde aparece como un `Failed to fetch dynamically imported module` que no dice qué archivo falta. Comprueba además que los montajes declarados **cuadran con los de los dos servidores**, leyéndolos de su código. |
-| `node tools/net-test.js` | **Prueba de red de extremo a extremo (26 comprobaciones).** Abre un socket de verdad contra el motor nuevo: comprueba que los mensajes viajen agrupados (859 en un solo marco), que caminar por la red mueva al jugador de verdad en el servidor, que la autoridad cruce la red intacta y que la basura por el socket no tumbe la conexión. Usa el puerto 0: una prueba que falla porque el 8080 estaba ocupado no dice nada del código. |
+| `node tools/net-test.js` | **Prueba de red de extremo a extremo (31 comprobaciones).** Abre un socket de verdad contra el motor nuevo: que los mensajes viajen agrupados (859 en un solo marco), que caminar mueva al jugador de verdad en el servidor, que la autoridad cruce la red intacta, que la basura por el socket no tumbe la conexión, y —esto último por dos fallos que ninguna otra prueba veía— que **los comandos y los mensajes del contenido lleguen al cliente**. Usa el puerto 0: una prueba que falla porque el 8080 estaba ocupado no dice nada del código. |
 | `node tools/test-protocol.js` | **Prueba del protocolo, la vista y las sesiones (57 comprobaciones).** Que el cliente **no pueda saber nada que el motor no le haya mandado**: qué tiles recibe y cuáles no (la superficie no recibe el subsuelo), que se envíen tres plantas y no ocho, que el diff mande solo lo que cambia, y sobre todo que **ningún mensaje del cliente cambie el mundo**: se prueban los 18 opcodes con datos de teletransporte. Se ejecuta sin abrir un socket, con el transporte inyectado. |
 | `node tools/test-combat.js` | **Prueba de combate e IA (65 comprobaciones).** La **fórmula cúbica de experiencia** con sus valores de referencia (nivel 8 = 4.200, nivel 100 = 15.694.800, nivel 200 = 129.389.800), armadura, resistencias e inmunidades elementales, el orden de los eventos de muerte, botín y subida de nivel, búsqueda de caminos con su tope de nodos, e IA: ver, perseguir, atacar y **rodear obstáculos**. Usa azar con semilla, porque una prueba sobre probabilidades con `Math.random` es una moneda al aire. |
 | `node tools/test-simulation.js` | **Prueba de la simulación (53 comprobaciones).** Planificador de eventos (orden, desempate, cancelación, presupuesto), criaturas, movimiento con el **coste de paso real** y sus cooldowns, movimiento bloqueado, esquinas, teletransporte, **spawns y reaparición** tras la muerte, y la limpieza de tiles materializados. Usa un reloj inyectado: una prueba de cooldowns con `Date.now()` real es una carrera contra el reloj. |
@@ -192,7 +198,7 @@ engine/          MOTOR NUEVO
     loader.js        carga y VALIDACIÓN del formato de mapa
 data/            DATAPACK (lo que toca un administrador de servidor)
   items/           items.xml, con las banderas que hacen funcionar el apilado
-  XML/             vocaciones, outfits, grupos...
+  XML/             vocaciones, outfits, outfits... las definiciones del motor
   scripts/         contenido programado (acciones, movimientos, comandos)
   monsters/        monstruos, como módulos JavaScript
   world/           mapas en el formato interno (JSON, legible en un diff)

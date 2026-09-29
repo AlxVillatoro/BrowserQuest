@@ -144,11 +144,51 @@ function main() {
         player.maxHealth = 150;
 
         const description = P.describeCreature(player);
+        const C = P.CREATURE_FIELD;
+
         check('una criatura se describe con su posicion, direccion y salud',
-            description[0] === player.id &&
-            description[3] === 40 && description[4] === 40 && description[5] === 7 &&
-            description[7] === 50 && description[8] === 0,
+            description[C.ID - 1] === player.id &&
+            description[C.X - 1] === 40 && description[C.Y - 1] === 40 &&
+            description[C.Z - 1] === 7 &&
+            description[C.HEALTH - 1] === 50 && description[C.KIND - 1] === 0,
             'salud al 50%, es jugador');
+
+        // El aspecto viaja en el mismo mensaje, y son cinco números: qué sprites y de
+        // qué colores. El motor no manda colores, manda ÍNDICES de una paleta que tiene
+        // el cliente, igual que manda ids de objeto y no imágenes.
+        check('y con su aspecto, que son cinco numeros',
+            description[C.LOOK_TYPE - 1] === player.outfit.lookType &&
+            description[C.HEAD - 1] === player.outfit.head &&
+            description[C.BODY - 1] === player.outfit.body &&
+            description[C.LEGS - 1] === player.outfit.legs &&
+            description[C.FEET - 1] === player.outfit.feet &&
+            description[C.ADDONS - 1] === player.outfit.addons,
+            'aspecto ' + description[C.LOOK_TYPE - 1] +
+            ' de colores ' + description[C.HEAD - 1] + '/' + description[C.BODY - 1] +
+            '/' + description[C.LEGS - 1] + '/' + description[C.FEET - 1]);
+
+        /*
+         * LA TABLA DE CAMPOS SE COMPRUEBA CONTRA EL CONSTRUCTOR.
+         *
+         * Esta comprobación existe porque ya se cayeron los índices una vez: se
+         * escribieron empezando en 0, cuando la posición 0 es el OPCODE, y todo quedó
+         * desplazado uno. El cliente leía el nombre donde estaba el identificador y el
+         * resultado era un muñeco con un nombre que era un número.
+         *
+         * Comparar los dos lados es lo único que garantiza que sigan de acuerdo: si
+         * alguien añade un campo en medio del constructor y no de la tabla —o al revés—
+         * esto lo dice, en vez de dejar que el fallo aparezca como un cliente que
+         * dibuja mal.
+         */
+        check('la tabla de campos concuerda con lo que construye describeCreature',
+            description[C.ID - 1] === player.id &&
+            description[C.NAME - 1] === player.name &&
+            description[C.X - 1] === player.position.x &&
+            description[C.Y - 1] === player.position.y &&
+            description[C.Z - 1] === player.position.z &&
+            description[C.DIRECTION - 1] === player.direction &&
+            description[C.KIND - 1] === 0,
+            'la posicion 0 de un mensaje es el opcode, asi que los campos empiezan en 1');
 
         check('la salud viaja en porcentaje, que es lo que dibuja la barra',
             P.healthPercent(player) === 50,

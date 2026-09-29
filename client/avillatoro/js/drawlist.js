@@ -113,6 +113,9 @@ export function buildDrawList(world, camera, options) {
                         direction: entry.creature.direction,
                         health: entry.creature.health,
                         isPlayer: entry.creature.isPlayer,
+                        // El aspecto viaja hasta el renderer, que es quien lo dibuja.
+                        // El orden de dibujo no lo interpreta: sólo lo transporta.
+                        outfit: entry.creature.outfit,
                         moving: entry.moving,
                         x: x, y: y, z: z,
                         sx: position.x, sy: position.y

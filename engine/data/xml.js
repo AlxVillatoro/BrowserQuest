@@ -32,7 +32,8 @@ function createParser() {
         parseAttributeValue: true,
         trimValues: true,
         isArray: (name) => name === 'item' || name === 'attribute' ||
-            name === 'vocation' || name === 'skill' || name === 'formula'
+            name === 'vocation' || name === 'skill' || name === 'formula' ||
+            name === 'outfit' || name === 'addon'
     });
 }
 
@@ -156,4 +157,52 @@ function loadVocations(filepath) {
     return vocations;
 }
 
-module.exports = { createParser, parseFile, attributesToObject, loadItems, loadVocations };
+/**
+ * Carga los aspectos de `data/XML/outfits.xml`.
+ *
+ * @param {string} filepath
+ * @returns {Map<number, Object>} id -> definición
+ *
+ * Un aspecto es lo que el motor necesita saber para poder decir "esta criatura se ve
+ * así": un identificador y una lista de añadidos. NO incluye los colores, porque los
+ * colores son del JUGADOR y no del aspecto: dos jugadores con el aspecto 136 pueden
+ * llevarlo de colores distintos, y eso es exactamente lo que hace que un puñado de
+ * aspectos dé miles de apariencias.
+ *
+ * Los añadidos son piezas que se pueden poner o quitar por separado, y cada uno tiene
+ * su propio nombre porque en Tibia se desbloquean de uno en uno.
+ */
+function loadOutfits(filepath) {
+    const data = parseFile(filepath, createParser());
+    const list = (data.outfits && data.outfits.outfit) || [];
+    const outfits = new Map();
+
+    list.forEach((entry) => {
+        const id = Number(entry.id);
+
+        const outfit = {
+            id: id,
+            name: entry.name !== undefined ? String(entry.name) : 'Outfit ' + id,
+            // `premium` y `unlocked` son de Tibia y se copian tal cual: el primero
+            // limita el aspecto a las cuentas premium y el segundo distingue los
+            // disponibles desde el principio de los que hay que desbloquear.
+            premium: entry.premium !== undefined && Number(entry.premium) === 1,
+            unlocked: entry.unlocked === undefined || Number(entry.unlocked) === 1,
+            addons: new Map()
+        };
+
+        (entry.addon || []).forEach((addon) => {
+            const addonId = Number(addon.id);
+            outfit.addons.set(addonId, {
+                id: addonId,
+                name: addon.name !== undefined ? String(addon.name) : 'Añadido ' + addonId
+            });
+        });
+
+        outfits.set(id, outfit);
+    });
+
+    return outfits;
+}
+
+module.exports = { createParser, parseFile, attributesToObject, loadItems, loadVocations, loadOutfits };

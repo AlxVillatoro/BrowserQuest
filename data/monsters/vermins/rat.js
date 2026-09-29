@@ -66,6 +66,23 @@ module.exports = {
     },
 
     /**
+     * Cómo se ve.
+     *
+     * `lookType` es el número que el cliente resuelve a un juego de sprites, igual que
+     * el id de un objeto. Los colores son índices de la paleta del cliente; en un
+     * monstruo se dejan todos en el mismo tono para que se lea como una criatura y no
+     * como un jugador vestido de colores.
+     */
+    outfit: {
+        lookType: 21,
+        head: 60,
+        body: 60,
+        legs: 60,
+        feet: 60,
+        addons: 0
+    },
+
+    /**
      * Ataques. La forma es la de TFS: cada ataque declara su intervalo, su
      * probabilidad y su rango de daño. El daño máximo se escribe NEGATIVO por
      * convención de Tibia, y el motor usa su valor absoluto.

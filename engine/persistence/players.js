@@ -28,6 +28,7 @@
  */
 
 const { Database } = require('./database');
+const { DEFAULT_OUTFIT, normalizeOutfit } = require('../world/outfit');
 
 /** Posición por defecto de un personaje nuevo, si el mapa no da otra. */
 const DEFAULT_POSITION = { x: 0, y: 0, z: 7 };
@@ -199,6 +200,24 @@ class PlayerRepository {
         player.storages = new Map(Object.keys(state.storages)
             .map((key) => [key, state.storages[key]]));
 
+        /**
+         * El aspecto, con una excepción que importa: `lookType` a 0.
+         *
+         * Un 0 significa que la fila es de ANTES de que existieran los aspectos, así que
+         * no es que el personaje no tenga apariencia, es que no se guardó. Ponerle el
+         * aspecto por defecto a esos personajes es lo correcto, y hacerlo aquí y no en
+         * la base es lo correcto también: el valor por defecto es una decisión del
+         * juego, y la base no tiene por qué conocerla.
+         *
+         * Sin esta comprobación, todos los personajes creados antes de esta versión
+         * saldrían con el aspecto 0, que no existe, y el cliente dibujaría un muñeco
+         * en blanco.
+         */
+        const stored = row.outfit || {};
+        player.outfit = (stored.lookType
+            ? normalizeOutfit(stored)
+            : { ...DEFAULT_OUTFIT });
+
         return player;
     }
 
@@ -259,13 +278,13 @@ class PlayerRepository {
                     x: player.position.x,
                     y: player.position.y,
                     z: player.position.z
-                }
+                },
+                outfit: player.outfit
             },
             items: player.inventory || [],
             storages: storages
         });
     }
-
     /**
      * Guarda a todos los que están dentro.
      *

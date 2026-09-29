@@ -281,11 +281,108 @@ export function describeTile(tile, ground) {
     );
 }
 
-/** Describe una criatura para el cliente. */
+/**
+ * Los canales del habla.
+ *
+ * Son números porque viajan en el protocolo y porque el motor los pasa a los
+ * `onSay` de los talkactions, que es la firma de TFS. El 1, 2 y 3 son los suyos.
+ */
+export const TALKTYPE = {
+    SAY: 1,
+    WHISPER: 2,
+    YELL: 3
+};
+
+/**
+ * Los índices de cada campo dentro de un mensaje.
+ *
+ * LOS MENSAJES SON ARRAYS, y por eso cada campo tiene una POSICIÓN. Usar números
+ * sueltos por el código funciona hasta que alguien añade un campo en medio: entonces
+ * todo lo que venía detrás se desplaza y el cliente lee la posición como si fuera el
+ * nombre, sin que nada avise. Con estos nombres, añadir un campo es cambiar la tabla y
+ * los sitios que lo usan.
+ *
+ * OJO CON EL CERO: la posición 0 es SIEMPRE el opcode, así que los campos empiezan en
+ * 1. Es la trampa de estas tablas y ya se cayó en ella una vez: los índices de criatura
+ * se escribieron empezando en 0 y todo quedó desplazado uno, de modo que el cliente leía
+ * el nombre donde estaba el identificador. Por eso hay una prueba que compara esta tabla
+ * con lo que produce `describeCreature`, en vez de confiar en que estén de acuerdo.
+ */
+export const CREATURE_FIELD = {
+    ID: 1,
+    LOOK_TYPE: 2,
+    HEAD: 3,
+    BODY: 4,
+    LEGS: 5,
+    FEET: 6,
+    ADDONS: 7,
+    NAME: 8,
+    X: 9,
+    Y: 10,
+    Z: 11,
+    DIRECTION: 12,
+    HEALTH: 13,
+    KIND: 14
+};
+
+export const TILE_FIELD = {
+    X: 1,
+    Y: 2,
+    Z: 3,
+    GROUND: 4,
+    DOWN_COUNT: 5,
+    ITEM_COUNT: 6,
+    /** Donde empiezan los items; cada uno ocupa tres posiciones. */
+    ITEMS: 7,
+    ITEM_STRIDE: 3
+};
+
+export const MOVE_FIELD = {
+    ID: 1,
+    FROM_X: 2, FROM_Y: 3, FROM_Z: 4,
+    TO_X: 5, TO_Y: 6, TO_Z: 7,
+    DIRECTION: 8,
+    DURATION: 9
+};
+
+export const LOGIN_FIELD = {
+    ID: 1,
+    NAME: 2,
+    X: 3, Y: 4, Z: 5,
+    HEALTH: 6,
+    MAX_HEALTH: 7,
+    LEVEL: 8,
+    EXPERIENCE: 9,
+    VOCATION: 10
+};
+
+export const UPDATE_FIELD = {
+    ID: 1,
+    DIRECTION: 2,
+    HEALTH: 3
+};
+
+/**
+ * Describe una criatura para el cliente.
+ *
+ * Lleva el ASPECTO: qué conjunto de sprites y de qué colores. El motor manda números y
+ * el cliente, que es quien tiene los sprites y la paleta, los resuelve.
+ *
+ * El aspecto de un monstruo viaja igual que el de un jugador, y es lo que permite que
+ * el mismo monstruo cambie de apariencia al transformarse sin que el cliente sepa qué
+ * monstruos se transforman.
+ */
 export function describeCreature(creature) {
+    const outfit = creature.outfit || {};
+
     return [
         creature.id,
-        0,                                   // hueco: tipo de aspecto (outfit), pendiente
+        outfit.lookType === undefined ? 0 : outfit.lookType,
+        outfit.head === undefined ? 0 : outfit.head,
+        outfit.body === undefined ? 0 : outfit.body,
+        outfit.legs === undefined ? 0 : outfit.legs,
+        outfit.feet === undefined ? 0 : outfit.feet,
+        outfit.addons === undefined ? 0 : outfit.addons,
         creature.name,
         creature.position.x,
         creature.position.y,

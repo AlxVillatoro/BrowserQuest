@@ -94,6 +94,22 @@ function createEngine(options) {
         log.warning('no se encontro ' + vocationsPath);
     }
 
+    // Los aspectos son definiciones del motor, como las vocaciones: no son contenido
+    // de mundo y no los tocan los scripts, se leen al arrancar. Lo que SI es de cada
+    // jugador son los COLORES, y esos van en el personaje.
+    const outfitTypes = new Map();
+    const outfitsPath = resolve(config.outfitsXml);
+    if (fs.existsSync(outfitsPath)) {
+        Xml.loadOutfits(outfitsPath).forEach((outfit, id) => {
+            outfitTypes.set(id, outfit);
+        });
+        log.info('outfits.xml: ' + outfitTypes.size + ' aspectos');
+    } else {
+        log.warning('no se encontro ' + outfitsPath + ': no se podra comprobar el aspecto');
+    }
+
+    world.outfitTypes = outfitTypes;
+
     // --- 3. Registro de contenido -----------------------------------------
     const registry = new ScriptRegistry({ world: world, logger: log });
 
@@ -326,6 +342,7 @@ function createEngine(options) {
         talkActions: registry.talkActions.length,
         creatureEvents: registry.events.size,
         monsterTypes: world.monsterTypes.size,
+        outfits: world.outfitTypes ? world.outfitTypes.size : 0,
         monsters: world.monsters.size,
         spawns: spawnStats.spawns,
         persistence: persistenceStats,
@@ -454,6 +471,29 @@ function createEngine(options) {
 
     /** Difunde lo que dice una criatura a quien pueda oírla. */
     api.broadcastSay = (creature, text) => api.sessions.broadcastSay(creature, text);
+
+    /*
+     * El camino de los mensajes HACIA el jugador.
+     *
+     * El mundo avisa de que alguien ha hablado o de que hay un mensaje privado, y aquí
+     * se traduce a mensajes del protocolo. Es la misma separación que en todo lo demás:
+     * el mundo no sabe que existe un protocolo, y el contenido no sabe que existe un
+     * cliente. Sin este enganche, `sendTextMessage` sólo apuntaba el texto en una lista
+     * y al jugador no le llegaba nada.
+     */
+    world.on('onTextMessage', (player, text) => {
+        if (!player) {
+            return;
+        }
+        const session = api.sessions.get(player.id);
+        if (session) {
+            session.sendText(text);
+        }
+    });
+
+    world.on('onCreatureSay', (creature, text) => {
+        api.sessions.broadcastSay(creature, text);
+    });
 
     /** Crea una sesión con un transporte ya resuelto. Se registra al entrar. */
     api.createSession = (send) => api.sessions.createSession(send);

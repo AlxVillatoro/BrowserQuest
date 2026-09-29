@@ -12,7 +12,7 @@
  */
 
 import { DRAW } from './drawlist.js';
-import { TILE } from './sprites.js';
+import { TILE, paletteColor, darker } from './sprites.js';
 
 export class Renderer {
     constructor(options) {
@@ -113,11 +113,14 @@ export class Renderer {
         const x = Math.round(op.sx);
         const y = Math.round(op.sy);
 
-        // Un cuerpo simple, con la forma cambiando según la dirección. No es un
-        // sprite: es un marcador legible hasta que existan los assets de verdad.
-        const isPlayer = op.isPlayer;
-        const bodyColor = isPlayer ? '#4a90d9' : '#c05040';
-        const outline = isPlayer ? '#2a5a90' : '#803020';
+        // LOS COLORES VIENEN DEL ASPECTO, que son cuatro índices de la paleta. Aquí se
+        // resuelven a colores: es trabajo del cliente, que es quien tiene la paleta, y
+        // el motor sólo manda números.
+        const outfit = op.outfit || {};
+        const head = paletteColor(outfit.head);
+        const body = paletteColor(outfit.body);
+        const legs = paletteColor(outfit.legs);
+        const feet = paletteColor(outfit.feet);
 
         // La sombra proyectada es lo que ancla al muñeco en el suelo: sin ella
         // parece flotar, y es lo que más se nota al mirar el 2.5D.
@@ -126,21 +129,45 @@ export class Renderer {
         this.ctx.ellipse(x + TILE / 2, y + TILE - 4, TILE / 3, TILE / 6, 0, 0, Math.PI * 2);
         this.ctx.fill();
 
-        this.ctx.fillStyle = bodyColor;
-        this.ctx.strokeStyle = outline;
+        // Los pies, lo más abajo; luego las piernas, el cuerpo y la cabeza. Se dibujan
+        // de abajo arriba para que cada parte tape a la anterior, que es el mismo
+        // criterio que el orden de las casillas.
+        this.ctx.fillStyle = feet;
+        this.ctx.fillRect(x + 11, y + TILE - 8, TILE - 22, 5);
+
+        this.ctx.fillStyle = legs;
+        this.ctx.fillRect(x + 11, y + TILE - 15, TILE - 22, 8);
+
+        this.ctx.fillStyle = body;
+        this.ctx.fillRect(x + 9, y + 9, TILE - 18, TILE - 23);
+        this.ctx.strokeStyle = darker(body);
         this.ctx.lineWidth = 1;
+        this.ctx.strokeRect(x + 9.5, y + 9.5, TILE - 19, TILE - 24);
 
-        this.ctx.fillRect(x + 9, y + 8, TILE - 18, TILE - 14);
-        this.ctx.strokeRect(x + 9.5, y + 8.5, TILE - 19, TILE - 15);
+        this.ctx.fillStyle = head;
+        this.ctx.fillRect(x + 11, y + 2, TILE - 22, 9);
+        this.ctx.strokeStyle = darker(head);
+        this.ctx.strokeRect(x + 11.5, y + 2.5, TILE - 23, 8);
 
-        // La cabeza, para que se distinga la orientación.
-        this.ctx.fillStyle = '#e8c8a0';
-        this.ctx.fillRect(x + 12, y + 3, TILE - 24, 9);
+        // Los añadidos van sobre el cuerpo, y se ven como una pieza distinta. Con
+        // sprites de verdad serían capas del sprite; aquí basta con que se note que
+        // están puestos, porque un añadido que no se ve no se puede probar.
+        const addons = Number(outfit.addons) || 0;
+        if (addons & 1) {
+            this.ctx.fillStyle = darker(body);
+            this.ctx.fillRect(x + 7, y + 13, 5, 8);
+            this.ctx.fillRect(x + TILE - 12, y + 13, 5, 8);
+        }
+        if (addons & 2) {
+            this.ctx.fillStyle = paletteColor(outfit.head);
+            this.ctx.fillRect(x + 12, y - 3, TILE - 24, 4);
+        }
 
-        // Un detalle que marca hacia dónde mira.
+        // Los ojos, que marcan hacia dónde mira.
         this.ctx.fillStyle = '#202020';
         const cx = x + TILE / 2;
-        const cy = y + 7;
+        const cy = y + 6;
+
         if (op.direction === 0) {
             this.ctx.fillRect(cx - 4, cy - 2, 2, 2);
             this.ctx.fillRect(cx + 2, cy - 2, 2, 2);
@@ -151,6 +178,15 @@ export class Renderer {
             this.ctx.fillRect(cx + 2, cy - 1, 3, 2);
         } else {
             this.ctx.fillRect(cx - 5, cy - 1, 3, 2);
+        }
+
+        // Un monstruo se distingue por su aspecto, pero mientras los sprites sean de
+        // procedimiento el color del cuerpo podría coincidir con el de un jugador. Un
+        // contorno distinto deja claro quién es quién sin depender del color.
+        if (!op.isPlayer) {
+            this.ctx.strokeStyle = 'rgba(0,0,0,0.55)';
+            this.ctx.lineWidth = 1;
+            this.ctx.strokeRect(x + 8.5, y + 1.5, TILE - 17, TILE - 9);
         }
 
         if (this.showHealth && op.health !== undefined && op.health < 100) {
@@ -167,7 +203,7 @@ export class Renderer {
             this.ctx.textAlign = 'center';
             this.ctx.fillStyle = 'rgba(0,0,0,0.7)';
             this.ctx.fillText(op.name, x + TILE / 2 + 1, y - 8 + 1);
-            this.ctx.fillStyle = isPlayer ? '#cfe6ff' : '#ffd0c0';
+            this.ctx.fillStyle = op.isPlayer ? '#cfe6ff' : '#ffd0c0';
             this.ctx.fillText(op.name, x + TILE / 2, y - 8);
         }
     }

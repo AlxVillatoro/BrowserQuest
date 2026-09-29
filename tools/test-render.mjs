@@ -19,6 +19,7 @@ import path from 'node:path';
 import { Camera, TILE_PIXELS, floorOffset } from '../client/avillatoro/js/camera.js';
 import { ClientWorld } from '../client/avillatoro/js/world.js';
 import { buildDrawList, forEachTileInDrawOrder, summarize, DRAW } from '../client/avillatoro/js/drawlist.js';
+import { paletteColor, darker, PALETTE_SIZE } from '../client/avillatoro/js/sprites.js';
 
 // El protocolo es el mismo archivo que usa el motor, y es CommonJS-friendly: se
 // carga con require para no depender de la ruta del montaje del servidor.
@@ -57,6 +58,34 @@ function tileMessage(x, y, z, ground, downIds, topIds) {
     const items = down.concat(top);
     return [P.SERVER.TILE_ADD, x, y, z, ground, down.length, items.length]
         .concat(items.reduce((flat, entry) => flat.concat(entry), []));
+}
+
+/**
+ * Construye un mensaje de aparición de criatura.
+ *
+ * Existe porque el formato de este mensaje YA CAMBIÓ una vez —al añadir el aspecto,
+ * que pasó de un hueco a cinco campos— y todas las pruebas que lo escribían a mano
+ * empezaron a leer el nombre donde estaba la cabeza. Poniéndolo en un sitio, el
+ * próximo cambio es una edición y no una cacería.
+ */
+function creatureAdd(id, name, x, y, z, options) {
+    const opts = options || {};
+
+    return [
+        P.SERVER.CREATURE_ADD,
+        id,
+        opts.lookType === undefined ? 21 : opts.lookType,
+        opts.head === undefined ? 60 : opts.head,
+        opts.body === undefined ? 60 : opts.body,
+        opts.legs === undefined ? 60 : opts.legs,
+        opts.feet === undefined ? 60 : opts.feet,
+        opts.addons === undefined ? 0 : opts.addons,
+        name,
+        x, y, z,
+        opts.direction === undefined ? 2 : opts.direction,
+        opts.health === undefined ? 100 : opts.health,
+        opts.kind === undefined ? 1 : opts.kind
+    ];
 }
 
 function main() {
@@ -186,7 +215,7 @@ function main() {
         // criatura encima.
         world.apply([
             tileMessage(20, 20, 7, 102, [111], [112]),
-            [P.SERVER.CREATURE_ADD, 5, 0, 'Rata', 20, 20, 7, 2, 100, 1]
+            creatureAdd(5, 'Rata', 20, 20, 7)
         ], P);
 
         const camera = new Camera({ width: 320, height: 224 });
@@ -249,7 +278,7 @@ function main() {
         world.apply([
             tileMessage(30, 30, 7, 102),
             tileMessage(30, 31, 7, 102),
-            [P.SERVER.CREATURE_ADD, 7, 0, 'Rata', 30, 30, 7, 2, 100, 1]
+            creatureAdd(7, 'Rata', 30, 30, 7)
         ], P);
 
         const rat = world.creatures.get(7);
@@ -325,7 +354,7 @@ function main() {
         check('el jugador se identifica a si mismo',
             world.playerId === 42 && world.player.name === 'Yo');
 
-        world.apply([[P.SERVER.CREATURE_ADD, 42, 0, 'Yo', 50, 50, 7, 2, 100, 0]], P);
+        world.apply([creatureAdd(42, 'Yo', 50, 50, 7, { kind: 0 })], P);
         const me = world.creatures.get(42);
         check('y se reconoce como tal', me.isPlayer === true);
 
@@ -388,7 +417,7 @@ function main() {
                 messages.push(tileMessage(x, y, 7, 102, x === 31 ? [111] : [], []));
             }
         }
-        messages.push([P.SERVER.CREATURE_ADD, 3, 0, 'Rata', 32, 32, 7, 2, 50, 1]);
+        messages.push(creatureAdd(3, 'Rata', 32, 32, 7, { health: 50 }));
         world.apply(messages, P);
 
         const camera = new Camera({ width: 320, height: 224 });
@@ -416,9 +445,77 @@ function main() {
     }
 
     // =======================================================================
+    section('9. La paleta de los aspectos');
+    // =======================================================================
+
+    {
+        // La paleta es un ASSET DEL CLIENTE, igual que los sprites: el motor manda un
+        // índice y el cliente lo resuelve. Aquí se comprueba lo que tiene que cumplir
+        // una paleta para que el sistema funcione, no qué color es cada índice.
+        check('un índice da siempre el mismo color',
+            paletteColor(78) === paletteColor(78) &&
+            paletteColor(0) === paletteColor(0),
+            'si no, el mismo aspecto se vería distinto en cada fotograma');
+
+        check('índices distintos dan colores distintos',
+            paletteColor(78) !== paletteColor(79) &&
+            paletteColor(10) !== paletteColor(100),
+            'si no, cambiarse de aspecto no se notaría');
+
+        check('todos los índices del rango dan un color',
+            (() => {
+                for (let index = 0; index < PALETTE_SIZE; index += 1) {
+                    const color = paletteColor(index);
+                    if (!color || color.indexOf('hsl') !== 0 && color.indexOf('#') !== 0) {
+                        return false;
+                    }
+                }
+                return true;
+            })(),
+            PALETTE_SIZE + ' colores, que es el rango que el motor acota');
+
+        check('un índice fuera de rango no rompe la paleta',
+            paletteColor(-5) === paletteColor(0) &&
+            paletteColor(9999) === paletteColor(PALETTE_SIZE - 1),
+            'el motor ya lo acota, pero el cliente no se cae si le llega mal');
+
+        check('el color oscuro de un color lo es de verdad',
+            darker(paletteColor(78)) !== paletteColor(78) &&
+            darker('no soy un color').indexOf('rgba') === 0,
+            'y con algo que no es un color devuelve una sombra, no basura');
+
+        // Y el aspecto llega hasta la lista de dibujo, que es lo que hace que el
+        // renderer pueda pintarlo.
+        //
+        // Se manda TAMBIÉN EL TILE, porque el motor siempre manda los dos: el cliente
+        // no dibuja criaturas sobre casillas que no tiene. Si sólo se mandara la
+        // criatura, la lista de dibujo no la incluiría, y eso no sería un fallo sino la
+        // consecuencia de que el cliente sólo dibuja lo que ha recibido.
+        const { world } = makeWorld();
+        world.apply([
+            tileMessage(20, 20, 7, 102),
+            creatureAdd(4, 'Vestido', 20, 20, 7, {
+                lookType: 130, head: 100, body: 50, legs: 20, feet: 3,
+                addons: 3, kind: 0
+            })
+        ], P);
+
+        const camera = new Camera({ width: 320, height: 224 });
+        camera.setCenter(20, 20, 7);
+
+        const ops = buildDrawList(world, camera);
+        const creatureOp = ops.find((op) => op.kind === DRAW.CREATURE);
+
+        check('el aspecto llega hasta la lista de dibujo',
+            creatureOp && creatureOp.outfit.lookType === 130 &&
+            creatureOp.outfit.head === 100 && creatureOp.outfit.addons === 3,
+            'el orden de dibujo no lo interpreta: sólo lo transporta');
+    }
+
+    // =======================================================================
     console.log('');
     if (failures === 0) {
-        console.log('\u001b[32mTodo OK\u001b[0m — el cliente ordena y desplaza como debe.');
+        console.log('\u001b[32mTodo OK\u001b[0m — el cliente ordena, desplaza y viste como debe.');
         process.exit(0);
     }
     console.log('\u001b[31m' + failures + ' comprobacion(es) fallaron\u001b[0m');

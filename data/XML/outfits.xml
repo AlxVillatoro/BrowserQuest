@@ -1,0 +1,91 @@
+<?xml version='1.0' encoding='utf-8'?>
+<!--
+    Definiciones de aspectos (outfits).
+
+    Un aspecto es la APARIENCIA de una criatura: qué conjunto de sprites usa y de qué
+    colores. Sigue el mismo reparto que los objetos, y conviene verlo porque es el
+    mismo problema resuelto igual:
+
+        el motor manda un NÚMERO  ->  el cliente tiene los sprites de ese número
+
+    Ese número es el **lookType**, y es el contrato entre los dos. El motor no sabe
+    dibujar y no tiene por qué: sólo dice "esta criatura lleva el aspecto 136". El
+    cliente, que es quien tiene los assets, resuelve el 136 a un juego de sprites.
+
+    LOS COLORES SON ÍNDICES, NO COLORES. `head`, `body`, `legs` y `feet` son números de
+    una paleta de 133 colores que **vive en el cliente**, junto a los sprites. El
+    servidor no guarda `#4a90d9`, guarda `78`. Eso es lo que hace que un mismo aspecto
+    con colores distintos dé muchísimas apariencias sin ocupar nada: los sprites se
+    reutilizan y lo que cambia son cuatro números.
+
+    SOBRE LOS IDENTIFICADORES. Los de abajo siguen la numeración de Tibia en la zona
+    del 128 en adelante, que es donde empiezan los aspectos de jugador, pero **la
+    correspondencia exacta entre un id y un juego de sprites la fija el `.dat` del
+    cliente**. Si al enchufar assets reales un id no cuadra, lo que hay que cambiar es
+    este archivo, no el motor.
+
+    `premium` y `unlocked` son de Tibia: un aspecto premium sólo lo pueden usar las
+    cuentas premium, y `unlocked` distingue los que están disponibles desde el
+    principio de los que hay que desbloquear con una misión.
+-->
+<outfits>
+
+	<!-- ===================== Aspectos de jugador ===================== -->
+
+	<outfit id="128" name="Citizen" premium="0" unlocked="1">
+		<addon id="1" name="Citizen, primer añadido" />
+		<addon id="2" name="Citizen, segundo añadido" />
+	</outfit>
+
+	<outfit id="129" name="Hunter" premium="0" unlocked="1">
+		<addon id="1" name="Hunter, primer añadido" />
+		<addon id="2" name="Hunter, segundo añadido" />
+	</outfit>
+
+	<outfit id="130" name="Mage" premium="0" unlocked="1">
+		<addon id="1" name="Mage, primer añadido" />
+		<addon id="2" name="Mage, segundo añadido" />
+	</outfit>
+
+	<outfit id="131" name="Knight" premium="0" unlocked="1">
+		<addon id="1" name="Knight, primer añadido" />
+		<addon id="2" name="Knight, segundo añadido" />
+	</outfit>
+
+	<outfit id="132" name="Nobleman" premium="1" unlocked="1">
+		<addon id="1" name="Nobleman, primer añadido" />
+	</outfit>
+
+	<outfit id="133" name="Summoner" premium="1" unlocked="1" />
+
+	<outfit id="134" name="Warrior" premium="0" unlocked="1">
+		<addon id="1" name="Warrior, primer añadido" />
+		<addon id="2" name="Warrior, segundo añadido" />
+	</outfit>
+
+	<outfit id="135" name="Barbarian" premium="0" unlocked="1" />
+
+	<outfit id="136" name="Druid" premium="0" unlocked="1">
+		<addon id="1" name="Druid, primer añadido" />
+	</outfit>
+
+	<outfit id="137" name="Wizard" premium="1" unlocked="0">
+		<addon id="1" name="Wizard, primer añadido" />
+		<addon id="2" name="Wizard, segundo añadido" />
+	</outfit>
+
+	<!-- ===================== Aspectos de criatura ===================== -->
+	<!--
+	    Los monstruos también tienen aspecto, y por la misma razón: un monstruo no se
+	    identifica por su nombre en el protocolo, se identifica por su aspecto. Dos
+	    monstruos distintos pueden compartir aspecto, y el mismo monstruo puede cambiar
+	    de aspecto (por ejemplo al transformarse).
+	-->
+
+	<outfit id="21" name="Rat" premium="0" unlocked="1" />
+	<outfit id="34" name="Rat, variante" premium="0" unlocked="1" />
+	<outfit id="35" name="Cave Rat" premium="0" unlocked="1" />
+	<outfit id="36" name="Dragon" premium="0" unlocked="1" />
+	<outfit id="37" name="Dragon Lord" premium="0" unlocked="1" />
+
+</outfits>

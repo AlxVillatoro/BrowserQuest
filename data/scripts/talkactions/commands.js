@@ -1,7 +1,7 @@
 'use strict';
 
 /**
- * Comandos de chat: /pos y /item.
+ * Comandos de chat: /pos, /item y /outfit.
  *
  * Este archivo exporta un ARRAY, que es la forma de declarar varios registros en
  * el mismo módulo. Es lo que sustituye a llamar a `:register()` dos veces.
@@ -53,6 +53,68 @@ module.exports = [
 
             Game.createItem(itemId, 1);
             player.sendTextMessage('Creado: ' + name);
+            return true;
+        }
+    },
+
+    {
+        type: 'talkaction',
+        words: '/outfit',
+
+        /**
+         * Cambia el aspecto.
+         *
+         * Uso:  /outfit <lookType> [cabeza] [cuerpo] [piernas] [pies] [anadidos]
+         *
+         * Los colores son ÍNDICES de una paleta de 133 que tiene el cliente, no valores
+         * de color. Escribir `/outfit 136 78 69 58 115` no significa "un poco de azul",
+         * significa "los colores 78, 69, 58 y 115 de la paleta".
+         *
+         * EL COMANDO NO COMPRUEBA EL RANGO DE LOS COLORES a propósito: de eso se encarga
+         * el motor al normalizar, y tener la misma regla en dos sitios es como se acaba
+         * con dos reglas distintas. Aquí sólo se comprueba lo que el motor no puede
+         * saber, que es si el número es un número.
+         */
+        onSay(player, words, param, type) {
+            const parts = String(param || '').trim().split(/\s+/).filter(Boolean);
+
+            if (parts.length === 0) {
+                player.sendTextMessage('Uso: /outfit <tipo> [cabeza] [cuerpo] [piernas] [pies] [anadidos]');
+                return true;
+            }
+
+            const numbers = parts.map(Number);
+            if (numbers.some((value) => Number.isNaN(value))) {
+                player.sendTextMessage('Los valores tienen que ser numeros.');
+                return true;
+            }
+
+            const current = player.getOutfit();
+
+            const requested = {
+                lookType: numbers[0],
+                lookHead: numbers.length > 1 ? numbers[1] : current.lookHead,
+                lookBody: numbers.length > 2 ? numbers[2] : current.lookBody,
+                lookLegs: numbers.length > 3 ? numbers[3] : current.lookLegs,
+                lookFeet: numbers.length > 4 ? numbers[4] : current.lookFeet,
+                lookAddons: numbers.length > 5 ? numbers[5] : current.lookAddons
+            };
+
+            const result = player.setOutfit(requested);
+
+            if (!result.ok) {
+                player.sendTextMessage('No se puede: ' + result.reason);
+                return true;
+            }
+
+            const applied = player.getOutfit();
+
+            player.sendTextMessage(
+                'Aspecto: tipo ' + applied.lookType +
+                ', colores ' + applied.lookHead + ' ' + applied.lookBody + ' ' +
+                applied.lookLegs + ' ' + applied.lookFeet +
+                ', anadidos ' + applied.lookAddons);
+
             return true;
         }
     }

@@ -130,7 +130,8 @@ falta tocar el motor para añadir un hechizo, la arquitectura está mal.
 | Guardado periódico y al apagar | hecho y probado |
 | Herramientas de mapas e items | hecho y probado |
 | Escritor de mapas, con ida y vuelta | hecho y probado |
-| Outfits | pendiente |
+| Aspectos (outfits), con añadidos | hecho y probado |
+| Migración de esquema con datos dentro | hecho y probado |
 | Importadores OTBM/OTB/DAT/SPR | pendiente |
 
 ---
@@ -472,8 +473,10 @@ aceptarlo en silencio.
 servido, pruebas end-to-end y de diagnóstico en verde.
 
 **Fase 2 — Capa de datos y scripting.** *Hecho.* `config.js`, definiciones XML,
-registro y despacho de eventos, envoltorios de entidad, API `Game`, monstruos como
-módulos y recarga en caliente. Verificado por `tools/test-engine.js`.
+contenido en módulos JavaScript, registro, despacho y recarga en caliente. Las cinco
+definiciones que TFS reparte por XML —items, monstruos, vocaciones, grupos, outfits—
+están cubiertas: los objetos y los monstruos en sus formatos, las vocaciones en
+`vocations.xml` y los aspectos en `outfits.xml`. Verificado por `tools/test-engine.js`.
 
 **Fase 3 — Mundo.** *Hecha.* Formato interno de mapa por chunks con plantas y
 almacenamiento disperso, tiles con apilado (*stackpos*), coste de paso con la
@@ -497,6 +500,32 @@ antes que inventar números y presentarlos como los de Tibia.
 
 Lo que falta de esta fase: hechizos de área, invocación, huida con poca salud y las
 frases de los monstruos. Los datos ya se cargan; falta la capa que los usa.
+
+**Los aspectos (outfits).** Los *outfits* cierran la última definición que el objetivo
+nombraba. No son una fase aparte, son el final del punto de extensibilidad, pero
+merecen su sitio aquí porque el reparto que usan aclara el de todo lo demás.
+
+Que los colores sean índices y no colores es lo que hace que un puñado de aspectos dé
+miles de apariencias: los sprites se reutilizan y lo único que cambia son cuatro
+números. Y por eso el motor los ACOTA: llegan del cliente, y un índice 300 en una
+paleta de 133 dejaría a cada cliente defendiéndose por su cuenta, que es justo lo
+contrario del reparto.
+
+Dos cosas que aparecieron al hacerlo y que merecen quedar escritas:
+
+- **El cambio de esquema necesitó una migración de verdad.** El esquema base es la
+  versión 1 y no se toca; añadir los campos del aspecto es una migración que lleva de
+  la 1 a la 2. Si en vez de eso se cambiara el `CREATE TABLE`, las bases que ya tienen
+  personajes se quedarían con el esquema viejo y las consultas fallarían en producción
+  y no en las pruebas, porque las pruebas crean bases nuevas. La prueba construye una
+  base CON LA FORMA DE LA VERSIÓN 1 y con un personaje dentro, y comprueba que el
+  personaje sigue ahí después de migrar: comprobar que aparecen las columnas es fácil,
+  y lo que hay que comprobar es que no se pierden los datos.
+- **Un personaje sin aspecto guardado es de antes de que existieran.** `lookType` a 0
+  no significa "sin apariencia", significa "no se guardó", y el repositorio le pone el
+  de por defecto. La decisión vive ahí y no en la base, porque cuál es el aspecto por
+  defecto es cosa del juego. Sin esa comprobación, todos los personajes anteriores
+  saldrían con el aspecto 0 y el cliente dibujaría un muñeco en blanco.
 
 **Fase 5 — Protocolo.** *Hecha la parte que decide, pendiente el transporte.* El
 protocolo, el gestor de vista y las sesiones están hechos y probados. Lo que hace

@@ -36,7 +36,7 @@ const path = require('path');
 const crypto = require('crypto');
 
 /** Versión del esquema. Sube cuando cambie la estructura. */
-const SCHEMA_VERSION = 1;
+const SCHEMA_VERSION = 2;
 
 /**
  * Las tablas.
@@ -120,6 +120,60 @@ const SCHEMA = [
     `CREATE INDEX IF NOT EXISTS idx_player_items_player ON player_items(player_id)`,
     `CREATE INDEX IF NOT EXISTS idx_players_online ON players(online)`
 ];
+
+/**
+ * Los cambios de estructura, uno por versión.
+ *
+ * EL ESQUEMA DE ARRIBA ES LA VERSIÓN 1 Y NO SE TOCA. Cuando hay que añadir algo, se
+ * añade aquí una migración que lleve de la versión anterior a la nueva. Es la forma de
+ * que una base que ya tiene personajes se actualice sin perderlos: si en vez de esto
+ * se cambiara el `CREATE TABLE`, las bases existentes se quedarían con el esquema
+ * viejo y las consultas fallarían con un "no existe la columna" que aparece en
+ * producción y no en las pruebas, porque las pruebas crean bases nuevas.
+ *
+ * Es justo lo que TFS no hace, y por eso actualizar un servidor suyo obliga a ejecutar
+ * `ALTER TABLE` a mano y a acordarse de cuáles faltan.
+ */
+const MIGRATIONS = {
+    /**
+     * Versión 2: el aspecto de los personajes.
+     *
+     * Cinco columnas y no una con JSON, siguiendo a TFS: son cinco enteros pequeños y
+     * separados se pueden consultar y comparar. Los nombres son los de TFS para que
+     * quien venga de ahí reconozca la tabla.
+     */
+    2: (db) => {
+        ['looktype', 'lookhead', 'lookbody', 'looklegs', 'lookfeet', 'lookaddons']
+            .forEach((column) => {
+                try {
+                    db.exec('ALTER TABLE players ADD COLUMN ' + column +
+                        ' INTEGER NOT NULL DEFAULT 0');
+                } catch (error) {
+                    /*
+                     * Si la columna YA está, no se hace nada.
+                     *
+                     * En teoría no puede pasar: la versión dice qué migraciones faltan,
+                     * y cada una se aplica una sola vez. En la práctica pasa cuando la
+                     * fila de la versión y la estructura real no coinciden —una copia de
+                     * seguridad restaurada a medias, alguien tocando la tabla `meta` a
+                     * mano— y entonces hay que elegir entre dos males.
+                     *
+                     * Negarse a arrancar deja al servidor sin bootear y sin más salida
+                     * que abrir SQLite a mano, que es justo lo que sabe hacer poca gente.
+                     * Tolerarlo deja el resultado que se quería, que es que la columna
+                     * esté. Se elige lo segundo, y se avisa.
+                     */
+                    if (!/duplicate column name/i.test(String(error.message))) {
+                        throw error;
+                    }
+                    if (this.log) {
+                        this.log.warning('la columna ' + column + ' ya existia al migrar: ' +
+                            'la version de la base y su estructura no coincidian');
+                    }
+                }
+            });
+    }
+};
 
 /**
  * Deriva la clave de contraseña.
@@ -213,17 +267,46 @@ class Database {
         this.db.exec('BEGIN');
 
         try {
+            // Las tablas se crean sólo si no existen, así que en una base que ya tiene
+            // datos esto no hace nada. Lo que la pone al día es lo de después.
             SCHEMA.forEach((statement) => this.db.exec(statement));
 
             const row = this.db.prepare('SELECT value FROM meta WHERE key = ?')
                 .get('schema_version');
 
-            if (!row) {
+            const current = row ? Number(row.value) : null;
+
+            if (current === null) {
+                // Base nueva: las tablas se acaban de crear con el esquema de la
+                // versión 1, así que se marca así y las migraciones la llevan al día
+                // igual que a una que ya tuviera datos. Es lo que garantiza que el
+                // camino de una base nueva y el de una vieja sean EL MISMO: si se
+                // marcara directamente en la última versión, una base nueva tendría
+                // un esquema que nunca se ha probado a través de las migraciones.
                 this.db.prepare('INSERT INTO meta (key, value) VALUES (?, ?)')
-                    .run('schema_version', String(SCHEMA_VERSION));
-            } else if (Number(row.value) > SCHEMA_VERSION) {
+                    .run('schema_version', '1');
+            } else if (current > SCHEMA_VERSION) {
                 throw new Error('la base de datos es de una version mas nueva (' +
-                    row.value + ') que este motor (' + SCHEMA_VERSION + ')');
+                    current + ') que este motor (' + SCHEMA_VERSION + ')');
+            }
+
+            // Se aplican las migraciones que falten, EN ORDEN y una por una.
+            for (let version = (current === null ? 1 : current) + 1;
+                version <= SCHEMA_VERSION; version += 1) {
+
+                const migration = MIGRATIONS[version];
+                if (!migration) {
+                    throw new Error('falta la migracion a la version ' + version +
+                        ': la base no se puede poner al dia');
+                }
+
+                migration(this.db);
+                this.db.prepare('UPDATE meta SET value = ? WHERE key = ?')
+                    .run(String(version), 'schema_version');
+
+                if (this.log) {
+                    this.log.info('base de datos migrada a la version ' + version);
+                }
             }
 
             this.db.exec('COMMIT');
@@ -467,7 +550,21 @@ class Database {
                 health: row.health,
                 maxHealth: row.max_health,
                 direction: row.direction,
-                position: { x: row.pos_x, y: row.pos_y, z: row.pos_z }
+                position: { x: row.pos_x, y: row.pos_y, z: row.pos_z },
+                /**
+                 * El aspecto. `looktype` a 0 significa que la fila es de ANTES de que
+                 * existieran los aspectos, y quien la lea tiene que decidir qué hacer;
+                 * aquí se devuelve 0 y es el repositorio el que pone el de por defecto,
+                 * porque el valor por defecto es una decisión del juego y no de la base.
+                 */
+                outfit: {
+                    lookType: row.looktype,
+                    head: row.lookhead,
+                    body: row.lookbody,
+                    legs: row.looklegs,
+                    feet: row.lookfeet,
+                    addons: row.lookaddons
+                }
             },
             items: items,
             storages: storages
@@ -497,7 +594,9 @@ class Database {
             this.db.prepare(
                 `UPDATE players SET
                     vocation = ?, level = ?, experience = ?, health = ?, max_health = ?,
-                    direction = ?, pos_x = ?, pos_y = ?, pos_z = ?, last_login = ?
+                    direction = ?, pos_x = ?, pos_y = ?, pos_z = ?, last_login = ?,
+                    looktype = ?, lookhead = ?, lookbody = ?, looklegs = ?, lookfeet = ?,
+                    lookaddons = ?
                  WHERE id = ?`
             ).run(
                 player.vocation || 'None',
@@ -510,6 +609,12 @@ class Database {
                 Number(player.position.y),
                 Number(player.position.z),
                 this.now(),
+                Number(player.outfit && player.outfit.lookType || 0),
+                Number(player.outfit && player.outfit.head || 0),
+                Number(player.outfit && player.outfit.body || 0),
+                Number(player.outfit && player.outfit.legs || 0),
+                Number(player.outfit && player.outfit.feet || 0),
+                Number(player.outfit && player.outfit.addons || 0),
                 Number(player.id)
             );
 
@@ -591,4 +696,4 @@ class Database {
     }
 }
 
-module.exports = { Database, SCHEMA_VERSION, hashPassword, passwordsMatch };
+module.exports = { Database, SCHEMA_VERSION, MIGRATIONS, hashPassword, passwordsMatch };

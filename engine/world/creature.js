@@ -16,6 +16,7 @@
 
 const { Position, DIRECTIONS, directionFrom } = require('./position');
 const { stepDuration } = require('./stepcost');
+const { DEFAULT_OUTFIT } = require('./outfit');
 
 const DIRECTION = {
     NORTH: 0,
@@ -253,6 +254,19 @@ class Player extends Creature {
         /** Identidad persistente. Nulos si el motor corre sin base de datos. */
         this.accountId = null;
         this.characterId = null;
+
+        /**
+         * Cómo se ve esta criatura.
+         *
+         * Cinco números: el conjunto de sprites y cuatro colores de una paleta que
+         * tiene el CLIENTE. El motor no sabe dibujar y no necesita saberlo.
+         *
+         * Los monstruos también lo llevan, y por la misma razón que los jugadores: en
+         * el protocolo una criatura no se identifica por su nombre sino por su
+         * aspecto, y es lo que permite que el mismo monstruo cambie de apariencia al
+         * transformarse.
+         */
+        this.outfit = { ...DEFAULT_OUTFIT };
     }
 
     get kind() {

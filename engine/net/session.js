@@ -21,6 +21,7 @@
  */
 
 const P = require('./protocol');
+const { TALKTYPE } = require('./protocol');
 const { DIRECTION } = require('../world/creature');
 
 /** Cómo se llama el jugador si no manda nombre. */
@@ -303,20 +304,45 @@ class GameSession {
         return { handled: true, action: 'walk', moved: false, reason: result.reason };
     }
 
+    /**
+     * Alguien dice algo.
+     *
+     * PRIMERO SE COMPRUEBA SI ES UN COMANDO, y esto faltaba: los talkactions estaban
+     * registrados, se probaban, y **el cliente no los alcanzaba nunca** porque el
+     * mensaje se difundía como charla y no se despachaba. Es el fallo clásico de las
+     * piezas que funcionan por separado y no están conectadas: cada mitad pasa su
+     * prueba y el camino completo no existe.
+     *
+     * Si un talkaction consume el mensaje, NO se difunde: un comando no es una frase, y
+     * verlo aparecer en el chat como si lo hubieras dicho en voz alta sería raro.
+     */
     _handleSay(text) {
         if (text === undefined || text === null) {
             return { handled: false, reason: 'emptySay' };
         }
 
         const message = String(text).slice(0, 255);
+
+        const command = this.engine.registry.dispatchTalkAction(message, {
+            playerId: this.playerId,
+            type: TALKTYPE.SAY
+        });
+
+        if (command.handled) {
+            return { handled: true, action: 'command', text: message };
+        }
+
+        // El habla se difunde por cercanía, no por vista, y de eso se encarga el motor
+        // al avisar del hecho de hablar: la sesión no reparte nada por su cuenta. Es lo
+        // que hace que un monstruo que dice algo use el mismo camino.
         this.world.creatureSay(this.playerId, message);
 
-        // El habla se difunde por cercanía, no por vista: quien está al otro lado
-        // de una pared y a dos casillas oye, y quien está lejos no. Es la regla de
-        // Tibia y la que espera cualquiera al gritar en una mazmorra.
-        this.engine.broadcastSay(this.player, message);
-
         return { handled: true, action: 'say', text: message };
+    }
+
+    /** Un mensaje privado para este jugador. */
+    sendText(text) {
+        return this._send(P.message(P.SERVER.TEXT, 0, String(text)));
     }
 
     /** Mirar un tile: describe lo que hay, para depurar y para el examen. */

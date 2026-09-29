@@ -20,9 +20,10 @@ const fs = require('fs');
 const path = require('path');
 
 const { createEngine } = require('../engine/core/engine');
-const { Database } = require('../engine/persistence/database');
+const { Database, SCHEMA_VERSION, hashPassword } = require('../engine/persistence/database');
 const { PlayerRepository } = require('../engine/persistence/players');
 const { World } = require('../engine/world/world');
+const { DEFAULT_OUTFIT } = require('../engine/world/outfit');
 
 const ROOT = path.resolve(__dirname, '..');
 const DB_FILE = path.join(ROOT, 'data', 'test-persistence.db');
@@ -76,10 +77,16 @@ function main() {
             tables.indexOf('player_storages') !== -1,
             tables.join(', '));
 
+        // La versión es la ÚLTIMA, y una base nueva llega hasta ella pasando por las
+        // migraciones, igual que una vieja. Se comprueba contra `SCHEMA_VERSION` y no
+        // contra un número escrito a mano, porque escribirlo obligaría a tocar la
+        // prueba cada vez que se añade una columna, que es justo lo que la versión
+        // existe para evitar.
         check('se lleva la version del esquema',
-            db.db.prepare('SELECT value FROM meta WHERE key = ?').get('schema_version').value
-            === '1',
-            'para poder cambiar la estructura sin adivinar el estado de cada base');
+            Number(db.db.prepare('SELECT value FROM meta WHERE key = ?')
+                .get('schema_version').value) === SCHEMA_VERSION,
+            'version ' + SCHEMA_VERSION +
+            ': para poder cambiar la estructura sin adivinar el estado de cada base');
 
         // LA TRAMPA CLASICA: SQLite trae las claves ajenas DESACTIVADAS. Sin esto,
         // borrar una cuenta deja sus personajes huerfanos sin que nada avise.
@@ -123,10 +130,14 @@ function main() {
         check('una base de una version mas nueva se rechaza', rejected,
             'mejor negarse a arrancar que escribir con un esquema que no se conoce');
 
-        // Se deja la base en su version para el resto de la prueba.
+        // Se deja la base en su version para el resto de la prueba. Se restaura a la
+        // version ACTUAL y no a `'1'`: retrocederla haría que se volvieran a aplicar
+        // migraciones sobre columnas que ya existen, y la prueba estaría midiendo la
+        // tolerancia de las migraciones en vez de lo que quiere medir.
         const fix = new Database({ file: DB_FILE });
         fix.db = new (require('node:sqlite').DatabaseSync)(DB_FILE);
-        fix.db.prepare('UPDATE meta SET value = ? WHERE key = ?').run('1', 'schema_version');
+        fix.db.prepare('UPDATE meta SET value = ? WHERE key = ?')
+            .run(String(SCHEMA_VERSION), 'schema_version');
         fix.close();
     }
 
@@ -260,7 +271,8 @@ function main() {
                 health: 380,
                 maxHealth: 500,
                 direction: 1,
-                position: { x: 55, y: 66, z: 8 }
+                position: { x: 55, y: 66, z: 8 },
+                outfit: { lookType: 131, head: 100, body: 50, legs: 20, feet: 115, addons: 3 }
             },
             items: [
                 { slot: 'hand', position: 0, typeId: 2400, count: 1 },
@@ -307,6 +319,18 @@ function main() {
         check('los atributos de un item sobreviven al viaje',
             bySlot.backpack.attributes && bySlot.backpack.attributes.dueno === 'Guerrero',
             JSON.stringify(bySlot.backpack.attributes));
+
+        check('y el aspecto sobrevive, con sus cinco numeros',
+            loaded.player.outfit.lookType === 131 &&
+            loaded.player.outfit.head === 100 &&
+            loaded.player.outfit.body === 50 &&
+            loaded.player.outfit.legs === 20 &&
+            loaded.player.outfit.feet === 115 &&
+            loaded.player.outfit.addons === 3,
+            'aspecto ' + loaded.player.outfit.lookType + ' de colores ' +
+            loaded.player.outfit.head + '/' + loaded.player.outfit.body + '/' +
+            loaded.player.outfit.legs + '/' + loaded.player.outfit.feet +
+            ' y anadidos ' + loaded.player.outfit.addons);
 
         check('los storages vuelven, tanto con nombre como numericos',
             loaded.storages['mision.dragon'] === 3 &&
@@ -513,6 +537,102 @@ function main() {
             [base, base + '-wal', base + '-shm'].forEach((file) => {
                 try { fs.unlinkSync(file); } catch (error) { /* ya no esta */ }
             });
+        });
+    }
+
+    // =======================================================================
+    section('6. Migracion: una base con personajes se pone al dia');
+    // =======================================================================
+
+    {
+        /*
+         * Se construye una base CON LA FORMA DE LA VERSION 1 y con un personaje dentro,
+         * y luego se abre con el motor actual.
+         *
+         * Es la prueba que de verdad importa de una migración, y la que casi nadie
+         * escribe: comprobar que las columnas nuevas aparecen es fácil, y lo que hay que
+         * comprobar es que el personaje que YA ESTABA sigue ahí. Una migración que se
+         * lleva por delante los datos es peor que no tener migración.
+         */
+        const MIGRATION_FILE = path.join(ROOT, 'data', 'test-migration.db');
+        [MIGRATION_FILE, MIGRATION_FILE + '-wal', MIGRATION_FILE + '-shm'].forEach((file) => {
+            try { fs.unlinkSync(file); } catch (error) { /* no existia */ }
+        });
+
+        // Se crea con el esquema actual y se le quitan las columnas del aspecto, que es
+        // exactamente como era la version 1.
+        new Database({ file: MIGRATION_FILE }).open().close();
+
+        const { DatabaseSync } = require('node:sqlite');
+        const old = new DatabaseSync(MIGRATION_FILE);
+
+        ['looktype', 'lookhead', 'lookbody', 'looklegs', 'lookfeet', 'lookaddons']
+            .forEach((column) => old.exec('ALTER TABLE players DROP COLUMN ' + column));
+
+        old.prepare('UPDATE meta SET value = ? WHERE key = ?').run('1', 'schema_version');
+
+        // La contrasena se guarda con el hash DE VERDAD. Inventarse uno para no tener
+        // que calcularlo deja una cuenta con la que no se puede entrar, y entonces la
+        // prueba no puede comprobar el camino completo: migrar, entrar y ver el
+        // personaje.
+        const salt = 'sal-de-prueba';
+        old.prepare(`INSERT INTO accounts (name, password_hash, password_salt, created_at)
+                     VALUES (?, ?, ?, ?)`).run('Antiguo', hashPassword('clave', salt), salt, 0);
+        old.prepare(`INSERT INTO players (account_id, name, vocation, level, experience,
+                     health, max_health, direction, pos_x, pos_y, pos_z, created_at)
+                     VALUES (1, ?, 'Knight', 55, 999999, 400, 500, 1, 33, 44, 7, 0)`)
+            .run('Veterano');
+        old.close();
+
+        const migrated = new Database({ file: MIGRATION_FILE }).open();
+
+        check('una base de la version anterior se migra sola',
+            Number(migrated.db.prepare('SELECT value FROM meta WHERE key = ?')
+                .get('schema_version').value) === SCHEMA_VERSION,
+            'de la version 1 a la ' + SCHEMA_VERSION + ' sin tocar nada a mano');
+
+        const veteran = migrated.findCharacterByName('Veterano');
+        check('y el personaje que ya estaba NO se pierde',
+            veteran !== null && veteran.level === 55 && veteran.experience === 999999 &&
+            veteran.pos_x === 33 && veteran.pos_y === 44,
+            veteran ? 'nivel ' + veteran.level + ' en (' + veteran.pos_x + ',' +
+                veteran.pos_y + ')' : 'DESAPARECIO');
+
+        check('las columnas nuevas aparecen con su valor por defecto',
+            veteran.looktype === 0,
+            'aspecto 0: la fila es de antes de que existieran los aspectos');
+
+        // Y el repositorio tiene que saber qué hacer con ese 0. Si no, todos los
+        // personajes anteriores saldrían con el aspecto 0, que no existe, y el cliente
+        // dibujaría un muñeco en blanco.
+        const migratedWorld = new World({ logger: null });
+        const migratedRepo = new PlayerRepository({
+            world: migratedWorld,
+            file: MIGRATION_FILE,
+            spawnPosition: { x: 40, y: 40, z: 7 },
+            config: { autoCreateAccounts: false }
+        }).open();
+
+        const entry = migratedRepo.login({
+            account: 'Antiguo', password: 'clave', character: 'Veterano'
+        });
+
+        check('un personaje sin aspecto guardado recibe el de por defecto',
+            entry.player !== undefined &&
+            entry.player.outfit.lookType === DEFAULT_OUTFIT.lookType,
+            entry.player
+                ? 'aspecto ' + entry.player.outfit.lookType + ' (el de por defecto)'
+                : entry.error);
+
+        check('y conserva su nivel y su posicion',
+            entry.player.level === 55 && entry.player.position.x === 33,
+            'nivel ' + entry.player.level + ' en ' + entry.player.position);
+
+        migratedRepo.close();
+        migrated.close();
+
+        [MIGRATION_FILE, MIGRATION_FILE + '-wal', MIGRATION_FILE + '-shm'].forEach((file) => {
+            try { fs.unlinkSync(file); } catch (error) { /* ya no esta */ }
         });
     }
 

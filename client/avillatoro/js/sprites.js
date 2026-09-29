@@ -236,3 +236,71 @@ export function createProvider(options) {
     }
     return new ProceduralProvider();
 }
+
+// ---------------------------------------------------------------------------
+// La paleta de los aspectos
+// ---------------------------------------------------------------------------
+
+/** Cuántos colores tiene la paleta. El motor acota a este rango. */
+export const PALETTE_SIZE = 133;
+
+/** Familias de color en la paleta. */
+const HUE_FAMILIES = 19;
+
+/** Cuántos pasos de claridad tiene cada familia. */
+const SHADES_PER_FAMILY = 7;
+
+/**
+ * De índice de paleta a color.
+ *
+ * LA PALETA DE VERDAD SON 133 COLORES FIJOS que vienen con el cliente de Tibia, y no
+ * se distribuyen con este proyecto. Esta función los DERIVA del índice.
+ *
+ * No da los mismos colores que los de Tibia, y eso hay que decirlo claro. Lo que sí da
+ * es lo que hace falta para que el sistema funcione y se vea: **índices distintos dan
+ * colores distintos, y siempre el mismo color para el mismo índice**. Un jugador que se
+ * cambia el aspecto lo ve cambiar, y el mismo aspecto se ve igual en todas las
+ * máquinas, que es lo que importa para poder probarlo.
+ *
+ * La forma imita la de la paleta real: familias de tono, y dentro de cada una los
+ * colores van de claro a oscuro. Está así y no en un círculo continuo porque es como
+ * se lee la de Tibia: el 78 y el 79 son el mismo color con distinta claridad, no dos
+ * tonos parecidos.
+ *
+ * Sustituirla por la tabla real es cambiar ESTA función y nada más: el motor sigue
+ * mandando los mismos índices, porque la paleta es un asset del cliente.
+ *
+ * @param {number} index 0..132
+ * @returns {string} un color CSS
+ */
+export function paletteColor(index) {
+    const value = Math.max(0, Math.min(PALETTE_SIZE - 1, Math.trunc(Number(index) || 0)));
+
+    if (value === 0) {
+        // El 0 es el blanco en la paleta de Tibia, y se respeta porque es el que más
+        // se usa para las telas claras.
+        return '#f0f0f0';
+    }
+
+    const family = Math.floor((value - 1) / SHADES_PER_FAMILY);
+    const shade = (value - 1) % SHADES_PER_FAMILY;
+
+    const hue = (family * 360) / HUE_FAMILIES;
+    const lightness = 76 - shade * 9;
+
+    return 'hsl(' + Math.round(hue) + ', 62%, ' + Math.round(lightness) + '%)';
+}
+
+/** Un color más oscuro que el dado, para los bordes. */
+export function darker(color) {
+    // Se trabaja sobre el hsl que devuelve `paletteColor`, que siempre tiene la misma
+    // forma, para no depender de analizar colores arbitrarios.
+    const match = String(color).match(/hsl\((\d+),\s*(\d+)%,\s*(\d+)%\)/);
+
+    if (!match) {
+        return 'rgba(0,0,0,0.45)';
+    }
+
+    const lightness = Math.max(8, Number(match[3]) - 26);
+    return 'hsl(' + match[1] + ', ' + match[2] + '%, ' + lightness + '%)';
+}

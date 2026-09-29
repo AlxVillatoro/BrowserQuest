@@ -23,6 +23,7 @@
 const { Position, DIRECTIONS, directionFrom } = require('./position');
 const { Item } = require('./item');
 const { Player, Monster, DIRECTION, resetIdCounter } = require('./creature');
+const { normalizeOutfit } = require('./outfit');
 
 /** Desplazamiento por número de dirección de Tibia. */
 const DIRECTION_DELTA = {
@@ -46,6 +47,15 @@ class World {
         /** Contenido estático, lo rellena el motor. */
         this.itemTypes = new Map();
         this.monsterTypes = new Map();
+
+        /**
+         * Los aspectos que existen, cargados de `data/XML/outfits.xml`.
+         *
+         * El motor sólo necesita la LISTA: qué apariencias hay y cuáles tienen
+         * añadidos. Los sprites y la paleta son del cliente.
+         */
+        this.outfitTypes = new Map();
+
         this.map = null;
 
         /** Estado vivo. */
@@ -72,7 +82,9 @@ class World {
             onStepOut: [],           // (creature, tile, toPosition)
             onCreatureAppear: [],    // (creature)
             onCreatureDisappear: [], // (creature)
-            onMonsterDeath: []       // (monster, killer)
+            onMonsterDeath: [],      // (monster, killer)
+            onTextMessage: [],       // (player, text) privado, para uno
+            onCreatureSay: []        // (creature, text) en voz alta, para quien oiga
         };
 
         /** Registro para las pruebas y para depurar sin instrumentar. */
@@ -201,6 +213,13 @@ class World {
             monsterType: definition,
             spawn: spawn || null
         });
+
+        // El aspecto lo declara la definición del monstruo. Si no lo declara se queda
+        // el genérico, y eso es visible a propósito: un monstruo sin aspecto propio se
+        // ve como un jugador, y es la señal de que falta declararlo.
+        if (definition.outfit) {
+            monster.outfit = normalizeOutfit(definition.outfit);
+        }
 
         this.monsters.set(monster.id, monster);
         this._registerCreature(monster);
@@ -569,29 +588,53 @@ class World {
     // Efectos observables
     // =======================================================================
 
+    /**
+     * Un mensaje privado para un jugador.
+     *
+     * SE AVISA ADEMÁS DE APUNTARLO, y eso faltaba: durante mucho tiempo esto sólo
+     * guardaba el texto en una lista interna para que las pruebas pudieran mirarla, y
+     * **no llegaba nunca al cliente**. Todo lo que el contenido le decía a un jugador
+     * —el resultado de un comando, el aviso de una misión— era invisible en el juego,
+     * y las pruebas pasaban porque comprobaban la lista.
+     *
+     * Es el fallo más engañoso de todos los que han aparecido: la pieza funcionaba, la
+     * prueba la verificaba, y el camino hasta el jugador no existía.
+     */
     sendTextMessage(playerId, text) {
         const player = this.getPlayer(playerId);
+
         this.messages.push({
             playerId: Number(playerId),
             playerName: player ? player.name : null,
             text: text
         });
+
+        this.emit('onTextMessage', player, String(text));
     }
 
     /**
      * Una criatura dice algo en voz alta.
      *
      * Se guarda aparte de los mensajes privados porque son cosas distintas: un
-     * mensaje privado va a un jugador, y esto lo oye quien esté alrededor. El
-     * día que exista el protocolo, el segundo se difunde por zona y el primero no.
+     * mensaje privado va a un jugador, y esto lo oye quien esté alrededor. Por eso lo
+     * que se avisa es el HECHO de hablar, y quien lo escucha decide a quién le llega.
+     *
+     * Igual que con los mensajes privados, avisar es lo que hace que un monstruo pueda
+     * hablar: el contenido llama aquí y el motor difunde, sin que el contenido sepa
+     * nada del protocolo ni de qué jugadores hay cerca.
      */
     creatureSay(creatureId, text) {
         const creature = this.getCreature(creatureId);
+
         this.says.push({
             creatureId: Number(creatureId),
             creatureName: creature ? creature.name : null,
             text: text
         });
+
+        if (creature) {
+            this.emit('onCreatureSay', creature, String(text));
+        }
     }
 
     teleportPlayer(playerId, x, y, z) {
