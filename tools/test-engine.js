@@ -780,6 +780,90 @@ function main() {
     }
 
     // -----------------------------------------------------------------------
+    // -----------------------------------------------------------------------
+    section('14. Equipar');
+    // -----------------------------------------------------------------------
+
+    {
+        const hero = world.createPlayer('Guerrero', { x: 40, y: 40, z: 7 });
+        hero.level = 30;
+
+        check('la ranura la declara el objeto, no el motor',
+            world.slotOf(2400) === 'hand' && world.slotOf(2376) === 'ring' &&
+            world.slotOf(3031) === null,
+            'espada -> hand, anillo -> ring, monedas -> ninguna: la mayoria de las cosas ' +
+            'no son equipables, y eso no es un error');
+
+        world.giveItem(hero, 2400, 1);
+        world.giveItem(hero, 2376, 1);
+
+        check('sin equipar no aporta nada',
+            hero.weaponAttack === 0 && hero.armorLevel === 0,
+            'ataque ' + hero.weaponAttack);
+
+        const puesto = world.equipItem(hero, 0);
+
+        check('equipar el arma cambia el ataque, que se DERIVA de ella',
+            puesto.ok === true && puesto.slot === 'hand' && hero.weaponAttack === 48,
+            'ataque 0 -> ' + hero.weaponAttack + ', que es el `attack` de la espada: el ' +
+            'arma es el dato y el ataque el resultado, no dos numeros sueltos');
+
+        check('y lo demas aporta defensa',
+            world.equipItem(hero, 1).ok === true && hero.armorLevel === 35,
+            'la espada declara defense 35 y suma como armadura; el dia que existan ' +
+            'escudos y armaduras sumaran aqui sin tocar nada mas');
+
+        check('lo que no es equipable se rechaza',
+            world.giveItem(hero, 3031, 10) === 1 &&
+            world.equipItem(hero, world.inventoryOf(hero)
+                .find((e) => !e.equipped && e.typeId === 3031).index).reason === 'notEquippable');
+
+        check('y lo que ya esta puesto tampoco se vuelve a poner',
+            world.equipItem(hero, world.inventoryOf(hero)
+                .find((e) => e.equipped).index).reason === 'alreadyEquipped');
+
+        check('el peso cuenta lo que llevas puesto',
+            world.weightOf(hero) === 4200 + 90 + 100,
+            'espada 42 + anillo 0,90 + 10 monedas 1,00 = ' +
+            require('../engine/world/weight').formatWeight(world.weightOf(hero)));
+
+        // --- Cambiar de arma ---
+        // Lo que importa: que no se pierda nada y que el cambio sea UNA accion. Obligar a
+        // quitarse la vieja antes haria que medio cambio dejara al jugador sin arma.
+        world.giveItem(hero, 2400, 1);
+        const antes = world.inventoryOf(hero).filter((e) => e.typeId === 2400).length;
+        const libre = world.inventoryOf(hero).find((e) => !e.equipped && e.typeId === 2400);
+        const cambio = world.equipItem(hero, libre.index);
+
+        check('cambiar de arma devuelve la vieja al inventario',
+            cambio.ok === true && cambio.replaced !== null &&
+            world.inventoryOf(hero).filter((e) => e.typeId === 2400).length === antes &&
+            world.equipmentOf(hero).length === 2,
+            'ninguna de las ' + antes + ' espadas se perdio: la vieja volvio al inventario ' +
+            'en la misma accion');
+
+        check('y sigue habiendo una sola cosa por ranura',
+            world.equipmentOf(hero).filter((e) => e.slot === 'hand').length === 1,
+            'es lo que impide llevar dos espadas en la misma mano');
+
+        // --- Quitar ---
+        const quitado = world.unequipItem(hero, 'hand');
+
+        check('quitarse el arma devuelve el ataque a cero',
+            quitado.ok === true && hero.weaponAttack === 0,
+            'el ataque no se queda pegado: se recalcula al quitar, igual que al poner');
+
+        check('y quitar de una ranura vacia se rechaza',
+            world.unequipItem(hero, 'hand').reason === 'emptySlot');
+
+        check('el inventario dice que lleva puesto y que no',
+            world.inventoryOf(hero).some((e) => e.equipped && e.slot === 'ring') &&
+            world.inventoryOf(hero).some((e) => !e.equipped),
+            'sin ese dato el cliente no puede enseñarlo en su sitio');
+
+        world.removePlayer(hero.id);
+    }
+
     section('14. Aislamiento');
     // -----------------------------------------------------------------------
 

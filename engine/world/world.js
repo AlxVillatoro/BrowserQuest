@@ -632,6 +632,140 @@ class World {
         return true;
     }
 
+    // =======================================================================
+    // Equipar
+    // =======================================================================
+
+    /**
+     * Lo que lleva puesto en una ranura, o null.
+     *
+     * LAS COSAS EQUIPADAS VIVEN EN EL MISMO INVENTARIO que las demas, distinguidas por su
+     * `slot`. No hay una lista de equipo aparte, y no la hay por tres razones que salen
+     * gratis: el peso ya las cuenta sin tocar nada, la persistencia ya las guarda porque la
+     * tabla `player_items` tiene una columna `slot` desde el principio, y no existe el
+     * problema de tener el mismo objeto en dos listas a la vez. Una lista aparte habria que
+     * sincronizarla, y esa sincronizacion es exactamente donde aparecen los duplicados.
+     */
+    equippedIn(creature, slot) {
+        if (!(creature.inventory instanceof Array)) {
+            return null;
+        }
+        return creature.inventory.find((entry) => entry.slot === String(slot)) || null;
+    }
+
+    /** Todo lo que lleva puesto. */
+    equipmentOf(creature) {
+        if (!(creature.inventory instanceof Array)) {
+            return [];
+        }
+        return creature.inventory.filter((entry) => entry.slot !== 'backpack');
+    }
+
+    /**
+     * La ranura donde iria un objeto, segun lo que declare `items.xml`.
+     *
+     * @returns {string|null} null si no es equipable, que no es un error: la mayoria de las
+     * cosas no lo son.
+     */
+    slotOf(typeId) {
+        const definition = this.itemTypes.get(Number(typeId));
+        const slot = definition && definition.attributes ? definition.attributes.slotType : null;
+
+        return slot ? String(slot) : null;
+    }
+
+    /**
+     * Recalcula lo que aporta lo que lleva puesto.
+     *
+     * ES EL UNICO SITIO QUE ESCRIBE `weaponAttack` Y `armorLevel`, y por eso no se tocan
+     * desde fuera. Son un VALOR DERIVADO del equipo: si un script pudiera subir el ataque por
+     * su cuenta, el arma y el ataque dirian cosas distintas y no habria forma de saber cual
+     * manda. Es la misma decision que con el dinero y con la capacidad.
+     *
+     * El arma suma ataque y lo demas suma defensa. Un objeto que declarara las dos cosas
+     * contaria en las dos, que es lo que se espera de un escudo que ademas golpea.
+     */
+    recomputeEquipment(creature) {
+        let weaponAttack = 0;
+        let armorLevel = 0;
+
+        this.equipmentOf(creature).forEach((entry) => {
+            const definition = this.itemTypes.get(entry.typeId);
+            const attributes = (definition && definition.attributes) || {};
+
+            if (attributes.attack) {
+                weaponAttack += Number(attributes.attack);
+            }
+            if (attributes.defense) {
+                armorLevel += Number(attributes.defense);
+            }
+        });
+
+        creature.weaponAttack = weaponAttack;
+        creature.armorLevel = armorLevel;
+
+        return { weaponAttack: weaponAttack, armorLevel: armorLevel };
+    }
+
+    /**
+     * Se pone un objeto del inventario.
+     *
+     * Si la ranura estaba ocupada, lo que habia vuelve al inventario. NO se rechaza: cambiar
+     * de espada es una sola accion, no dos, y obligar a quitarse la vieja antes haria que
+     * medio cambio dejara al jugador sin arma.
+     *
+     * @returns {{ok: boolean, reason?: string, slot?: string, replaced?: Object}}
+     */
+    equipItem(creature, index) {
+        const inventory = creature.inventory;
+        const position = Number(index);
+
+        if (!(inventory instanceof Array) || position < 0 || position >= inventory.length) {
+            return { ok: false, reason: 'badSlot' };
+        }
+
+        const entry = inventory[position];
+
+        if (entry.slot !== 'backpack') {
+            return { ok: false, reason: 'alreadyEquipped' };
+        }
+
+        const slot = this.slotOf(entry.typeId);
+
+        if (!slot) {
+            return { ok: false, reason: 'notEquippable' };
+        }
+
+        const previous = this.equippedIn(creature, slot);
+        if (previous) {
+            previous.slot = 'backpack';
+        }
+
+        entry.slot = slot;
+
+        const stats = this.recomputeEquipment(creature);
+
+        return { ok: true, slot: slot, replaced: previous, stats: stats };
+    }
+
+    /**
+     * Se quita lo que lleva puesto en una ranura.
+     *
+     * @returns {{ok: boolean, reason?: string, item?: Object}}
+     */
+    unequipItem(creature, slot) {
+        const entry = this.equippedIn(creature, slot);
+
+        if (!entry) {
+            return { ok: false, reason: 'emptySlot' };
+        }
+
+        entry.slot = 'backpack';
+        const stats = this.recomputeEquipment(creature);
+
+        return { ok: true, item: entry, stats: stats };
+    }
+
     getItem(instanceId) {
         return this.items.get(Number(instanceId)) || null;
     }
@@ -1444,7 +1578,11 @@ class World {
                     index: index,
                     typeId: entry.typeId,
                     count: entry.count,
-                    name: definition ? definition.name : 'objeto ' + entry.typeId
+                    name: definition ? definition.name : 'objeto ' + entry.typeId,
+                    // La ranura hace falta fuera: es lo que distingue lo que llevas puesto de lo
+                    // que solo llevas, y sin ella el cliente no puede enseñarlo en su sitio.
+                    slot: entry.slot,
+                    equipped: entry.slot !== 'backpack'
                 };
             });
     }
