@@ -363,6 +363,20 @@ function main() {
     check('detecta un waypoint fuera del mapa',
         /waypoint "malo"/.test(messages));
 
+    // Un waypoint sobre un muro manda a los jugadores dentro de una pared. Es un
+    // error que aparecio de verdad en el mapa de ejemplo, y el validador no lo
+    // veia porque solo comprobaba los limites.
+    const wallWaypoint = buildMap({
+        format: 'avillatoro-map', version: 1, name: 'wp', width: 16, height: 16, floors: 2,
+        defaultGround: { '0': 102 },
+        tiles: [{ x: 5, y: 5, z: 0, items: [111] }],
+        waypoints: { dentro_de_un_muro: [5, 5, 0] }
+    }, { itemTypes: itemTypes });
+
+    check('detecta un waypoint sobre un muro',
+        wallWaypoint.report.errors.some((e) => /no transitable/.test(e.message)),
+        'un jugador apareceria dentro de la pared');
+
     check('detecta un spawn de un monstruo no definido',
         /no esta definido en data\/monsters/.test(messages));
 

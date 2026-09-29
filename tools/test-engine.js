@@ -331,7 +331,7 @@ function main() {
 
     const temple = globalThis.Game.getWaypoint('temple');
     check('Game resuelve waypoints',
-        temple && temple.x === 30 && temple.y === 30 && temple.z === 7,
+        temple && temple.x === 40 && temple.y === 40 && temple.z === 7,
         'temple = ' + temple);
 
     check('Game puede describir el apilado de un tile',

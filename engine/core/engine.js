@@ -35,6 +35,8 @@ const { Scheduler } = require('./scheduler');
 const { Spawner } = require('../world/spawner');
 const { Combat } = require('../world/combat');
 const { MonsterAI } = require('../world/ai');
+const { ViewManager } = require('../net/view');
+const { SessionManager } = require('../net/session');
 
 /**
  * @param {Object} [options]
@@ -255,7 +257,20 @@ function createEngine(options) {
         registry.dispatchEvent('advance', [wrap(player), skill, oldLevel, newLevel]);
     });
 
-    // --- 10. Spawns -------------------------------------------------------
+    // --- 10. Vista --------------------------------------------------------
+    // La vista decide qué ve cada jugador. Se crea aquí y no dentro de la capa de
+    // red porque no es red: es una decision sobre el MUNDO (que plantas se ven,
+    // que entra en el area), y la red solo la transporta.
+    const view = new ViewManager({
+        world: world,
+        logger: log,
+        viewWidth: config.viewWidth,
+        viewHeight: config.viewHeight,
+        floorsBelow: config.viewFloorsBelow,
+        floorsAbove: config.viewFloorsAbove
+    });
+
+    // --- 11. Spawns -------------------------------------------------------
     // El gestor se suscribe por su cuenta al evento de muerte: es quien lo
     // necesita, asi que no depende de que el motor se acuerde de cablearlo.
     const spawner = new Spawner({ world: world, scheduler: scheduler, logger: log });
@@ -288,7 +303,7 @@ function createEngine(options) {
         ' movimientos, ' + stats.talkActions + ' comandos, ' +
         stats.monsterTypes + ' tipos de monstruo');
 
-    return {
+    const api = {
         rootDir: rootDir,
         log: log,
         config: config,
@@ -299,6 +314,8 @@ function createEngine(options) {
         spawner: spawner,
         combat: combat,
         ai: ai,
+        view: view,
+        sessions: null,
         vocations: vocations,
         stats: stats,
 
@@ -335,6 +352,12 @@ function createEngine(options) {
         reloadContent: reloadContent,
 
         shutdown() {
+            // `api.sessions` y no `sessions`: el gestor se crea DESPUES de este
+            // literal, asi que no es una variable en su ambito. La referencia se
+            // resuelve al llamar, cuando ya existe.
+            if (api.sessions) {
+                api.sessions.closeAll();
+            }
             world.stop();
             ai.stop();
             if (scheduler) {
@@ -345,6 +368,31 @@ function createEngine(options) {
             restoreGame();
         }
     };
+
+    // --- 11. Red ----------------------------------------------------------
+    // La capa de red se crea AL FINAL y recibe el propio objeto del motor, porque
+    // necesita su combate. Se construye aparte del literal para poder cerrar esta
+    // referencia circular sin trucos: primero existe el motor, luego la red que lo
+    // usa.
+    api.sessions = new SessionManager({
+        engine: api,
+        world: world,
+        view: view,
+        logger: log
+    });
+
+    /** Difunde lo que dice una criatura a quien pueda oírla. */
+    api.broadcastSay = (creature, text) => api.sessions.broadcastSay(creature, text);
+
+    /** Crea una sesión con un transporte ya resuelto. Se registra al entrar. */
+    api.createSession = (send) => api.sessions.createSession(send);
+
+    // El mundo avisa al final de cada tick y la red empuja entonces los cambios de
+    // vista. Se engancha aquí y no dentro del mundo porque el mundo no sabe que
+    // existe una red.
+    world.on('onTick', () => api.sessions.updateAll());
+
+    return api;
 }
 
 module.exports = { createEngine };

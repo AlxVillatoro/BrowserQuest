@@ -248,6 +248,10 @@ function buildMap(data, options) {
     });
 
     // --- Waypoints --------------------------------------------------------
+    // Se validan DESPUES de los tiles, y ese orden importa: comprobar si un
+    // waypoint es transitable requiere que el mapa ya este construido. Validarlos
+    // antes daria por bueno cualquier sitio, porque no habria nada que los
+    // bloqueara todavia.
     const waypoints = data.waypoints || {};
     Object.keys(waypoints).forEach((name) => {
         const position = Position.from(waypoints[name]);
@@ -255,6 +259,17 @@ function buildMap(data, options) {
             report.error('el waypoint "' + name + '" cae fuera del mapa', position.toString());
             return;
         }
+
+        // Un waypoint sobre un muro es casi siempre un error, y de los caros: los
+        // waypoints se usan para templos y destinos de teletransporte, asi que un
+        // jugador apareceria DENTRO de una pared sin poder salir. Aparecio de
+        // verdad: el waypoint `temple` del mapa de ejemplo estaba justo encima de
+        // un muro colocado para probar las esquinas, y el validador no lo veia.
+        if (!map.isWalkable(position.x, position.y, position.z)) {
+            report.error('el waypoint "' + name + '" cae en un tile no transitable',
+                position.toString());
+        }
+
         map.setWaypoint(name, position);
     });
 

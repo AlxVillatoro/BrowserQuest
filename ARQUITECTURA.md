@@ -118,9 +118,12 @@ falta tocar el motor para añadir un hechizo, la arquitectura está mal.
 | Botín y eventos de criatura | hecho y probado |
 | Búsqueda de caminos | hecho y probado |
 | IA de monstruos: ver, perseguir, atacar | hecho y probado |
+| Protocolo y vista (qué ve el cliente) | hecho y probado |
+| Sesiones y autoridad del servidor | hecho y probado |
+| Servidor WebSocket | pendiente (la capa de sesión ya no depende del transporte) |
+| Cliente que consuma el protocolo nuevo | pendiente |
 | Hechizos de área, invocación, huida | pendiente |
 | Frases de los monstruos (`voices`) | pendiente (los datos ya se cargan) |
-| Protocolo y red | pendiente |
 | Persistencia | pendiente |
 | Importadores OTBM/OTB/DAT/SPR | pendiente |
 
@@ -489,16 +492,41 @@ antes que inventar números y presentarlos como los de Tibia.
 Lo que falta de esta fase: hechizos de área, invocación, huida con poca salud y las
 frases de los monstruos. Los datos ya se cargan; falta la capa que los usa.
 
-**Fase 4 — Red y protocolo.** Servidor autoritativo. Aquí es donde el cliente
-pasa a ser un terminal: hoy el cliente heredado es **cliente-autoritativo para el
-movimiento**, y eso hay que invertirlo.
+**Fase 5 — Protocolo.** *Hecha la parte que decide, pendiente el transporte.* El
+protocolo, el gestor de vista y las sesiones están hechos y probados. Lo que hace
+real la separación de responsabilidades es que **el cliente no calcula qué ve**: el
+motor decide el área visible, las plantas que se envían y qué cambia en cada tick,
+y el cliente sólo dibuja lo que llega. Un cliente modificado no puede ver más,
+porque lo que no llega no existe para él.
 
-**Fase 5 — Persistencia.** Cuentas, personajes, inventario, storages.
+Tres decisiones que costaron un error cada una:
 
-**Fase 6 — Herramientas.** Importador/exportador OTBM, `otb2json`,
-`spr`→atlas. Sólo lo que no cubran las herramientas MIT.
+- **Visibilidad de juego y de dibujo no son lo mismo.** La regla de Tibia («la
+  superficie ve toda la superficie y nada del subsuelo; el subsuelo ve dos plantas
+  arriba y dos abajo») decide a quién puedes ver. Enviar ocho plantas de superficie
+  porque la regla las permite sería ocho veces el tráfico para dibujar una. Hay dos
+  rangos, y los tiles usan la intersección para que un jugador en la calle no
+  reciba el plano de la mazmorra.
+- **La duración del paso viaja en el mensaje de movimiento.** El cliente interpola
+  durante exactamente el tiempo que el motor calculó con la fórmula real. Si la
+  eligiera el cliente, el muñeco iría a un ritmo distinto del que el motor
+  considera real y el desfase se vería en cada paso.
+- **El transporte está inyectado**, así que todo el protocolo se prueba sin abrir
+  un socket. El servidor WebSocket es un adaptador encima, y esa es la siguiente
+  pieza.
 
-**Fase 7 — Render 2.5D.** Orden por diagonales, offset por planta, altura de
+**Fase 6 — Cliente.** Reescribir el cliente heredado para que consuma este
+protocolo. Hoy el cliente de BrowserQuest es **cliente-autoritativo para el
+movimiento**, que es justo lo contrario de lo que hace el motor nuevo.
+
+**Fase 7 — Persistencia.** Cuentas, personajes, inventario, storages. El grafo del
+mundo es circular (criatura → tile → criaturas) a propósito, así que habrá que
+serializar campo a campo y no volcar el estado.
+
+**Fase 8 — Herramientas.** Importador/exportador OTBM, `otb2json`, `spr`→atlas.
+Sólo lo que no cubran las herramientas MIT.
+
+**Fase 9 — Render 2.5D.** Orden por diagonales, offset por planta, altura de
 sprite y sombra proyectada. Ver la sección de 2.5D del informe de mecánicas.
 
 ---

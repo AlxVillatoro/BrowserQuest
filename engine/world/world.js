@@ -409,11 +409,21 @@ class World {
             diagonal: offset.diagonal
         });
 
+        /**
+         * Cuanto duro este paso. El protocolo lo envia al cliente para que
+         * interpole el desplazamiento durante exactamente ese tiempo: si el
+         * cliente eligiera la duracion por su cuenta, el muneco iria a un ritmo
+         * distinto del que el motor considera real y el desfase se veria en cada
+         * paso.
+         */
+        creature.lastStepDuration = creature.nextStepAt - now;
+
         return {
             moved: true,
             from: from,
             to: to,
             diagonal: offset.diagonal,
+            duration: creature.lastStepDuration,
             nextStepAt: creature.nextStepAt
         };
     }
@@ -634,6 +644,12 @@ class World {
             this.compactCounter = 0;
             this.map.compact();
         }
+
+        // El aviso de tick va AL FINAL: quien lo escuche (la capa de red) debe ver
+        // el mundo ya simulado, no a medio simular. Enviar la vista antes de que
+        // las criaturas se hayan movido mandaria el estado del tick anterior con
+        // un tick de retraso.
+        this.emit('onTick', this.tickCount);
 
         return this.tickCount;
     }

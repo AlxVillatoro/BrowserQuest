@@ -83,6 +83,10 @@ class Creature {
         /** Cuándo (ms epoch) podrá volver a moverse. Lo lleva el mundo. */
         this.nextStepAt = 0;
 
+        /** Cuánto duró su último paso, que es lo que el cliente necesita para
+         *  interpolar el desplazamiento. Lo pone el mundo al mover. */
+        this.lastStepDuration = 0;
+
         /** Cuándo (ms epoch) podrá volver a atacar. Lo lleva el combate. */
         this.nextAttackAt = 0;
 

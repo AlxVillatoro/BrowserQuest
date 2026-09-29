@@ -154,12 +154,22 @@ class GameMap {
     /**
      * El suelo de una celda, venga de un tile explícito o del suelo por defecto.
      *
-     * En el segundo caso se devuelve el objeto compartido de la planta. Su
-     * `position` no es significativa: quien pregunta ya sabe en qué celda está.
-     * Clonarlo en cada consulta costaría una asignación por celda y por frame sin
-     * dar nada a cambio.
+     * Fuera del mapa devuelve `null`, y esa comprobación no es un detalle: sin
+     * ella, preguntar por una celda que no existe devolvía el suelo por defecto de
+     * esa planta, así que mirar más allá del borde del mundo describía "ves
+     * hierba" donde no hay nada. Apareció probando el comando de mirar con la
+     * coordenada (999,999).
+     *
+     * En el caso del suelo por defecto se devuelve el objeto compartido de la
+     * planta. Su `position` no es significativa: quien pregunta ya sabe en qué
+     * celda está. Clonarlo en cada consulta costaría una asignación por celda y
+     * por frame sin dar nada a cambio.
      */
     getGround(x, y, z) {
+        if (!this.inBounds(x, y, z)) {
+            return null;
+        }
+
         const tile = this.getTile(x, y, z);
         if (tile && tile.ground) {
             return tile.ground;

@@ -52,6 +52,28 @@ module.exports = {
     mapName: 'sample',
     mapFile: null,
 
+    // ==========================================================================
+    // Lo que el motor le ENVÍA a cada jugador
+    // ==========================================================================
+    //
+    // `viewWidth` y `viewHeight` son el área visible en tiles. Enviar de más gasta
+    // ancho de banda en cada paso; enviar de menos hace que el jugador vea el borde
+    // del mundo al caminar. El cliente de Tibia usa 15x11 para el mapa, y aquí se
+    // usa algo mayor para que el desplazamiento no muestre costuras.
+    viewWidth: 18,
+    viewHeight: 14,
+
+    // Plantas que se envían por DEBAJO y por ENCIMA de la actual. NO es lo mismo
+    // que la visibilidad de juego: aquélla decide a quién puedes ver, y ésta qué se
+    // dibuja. Enviar las ocho plantas de superficie que la regla de juego permite
+    // sería ocho veces el tráfico para dibujar una sola.
+    //
+    // Dos abajo es lo que hace falta para ver el fondo de un desnivel; una arriba,
+    // para que el borde de un tejado no desaparezca al pasar por debajo. El número
+    // exacto hay que ajustarlo cuando exista el renderer.
+    viewFloorsBelow: 2,
+    viewFloorsAbove: 1,
+
     // -----------------------------------------------------------------------
     // Red
     // -----------------------------------------------------------------------
