@@ -119,4 +119,55 @@ function serve(req, res, root, urlPath) {
     return true;
 }
 
-module.exports = { serve, contentType, resolveSafe, MIME_TYPES };
+/**
+ * Crea un manejador de archivos estáticos a partir de un mapa de puntos de
+ * montaje (prefijo de URL -> directorio).
+ *
+ * Hace falta más de una raíz porque el cliente carga el módulo compartido con
+ * una ruta relativa que sale de su propio árbol:
+ * `'../../shared/js/gametypes'` en client/js/game.js. El navegador la resuelve
+ * como `/shared/js/gametypes.js`, y ese archivo vive en la raíz del proyecto, no
+ * dentro de `client/`. Sin montarlo, el cliente recibe un 404 y muere con
+ * "Types is not defined", porque gametypes.js es el que crea la global `Types`.
+ *
+ * @param {Object} mounts mapa de prefijo a directorio, p. ej.
+ *        { '/': './client', '/shared': './shared' }
+ * @returns {function(req, res, urlPath): boolean}
+ */
+function createHandler(mounts) {
+    // Los prefijos más específicos primero, para que '/shared' gane a '/'.
+    const table = Object.keys(mounts || {})
+        .filter((prefix) => !!mounts[prefix])
+        .map((prefix) => ({ prefix: prefix, root: mounts[prefix] }))
+        .sort((a, b) => b.prefix.length - a.prefix.length);
+
+    return function (req, res, urlPath) {
+        for (const mount of table) {
+            const relative = relativeForMount(mount.prefix, urlPath);
+            if (relative !== null && serve(req, res, mount.root, relative)) {
+                return true;
+            }
+        }
+        return false;
+    };
+}
+
+/**
+ * Traduce una URL a la ruta relativa dentro de un montaje.
+ * Devuelve null si la URL no pertenece a ese prefijo.
+ */
+function relativeForMount(prefix, urlPath) {
+    if (prefix === '/') {
+        return urlPath;
+    }
+    const normalized = prefix.replace(/\/+$/, '');
+    if (urlPath === normalized) {
+        return '/';
+    }
+    if (urlPath.startsWith(normalized + '/')) {
+        return urlPath.slice(normalized.length);
+    }
+    return null;
+}
+
+module.exports = { serve, createHandler, contentType, resolveSafe, MIME_TYPES };

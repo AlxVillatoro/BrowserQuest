@@ -41,6 +41,7 @@ versionado) los sobrescribe. Claves relevantes:
 | `nb_players_per_world` | Aforo por instancia |
 | `map_filepath` | Mapa del servidor (`server/maps/world_server.json`) |
 | `client_root` | Carpeta del cliente a servir. Si se omite, no se sirve cliente |
+| `shared_root` | Carpeta del código compartido, montada en `/shared`. Necesaria: el cliente la pide con una ruta relativa que sale de su árbol |
 | `metrics_enabled` | Telemetría por memcached. Requiere el paquete `memcache` |
 
 ---
@@ -52,6 +53,7 @@ Todas se ejecutan con el servidor levantado (salvo `diag-world` y `audit-globals
 | Comando | Qué hace |
 |---|---|
 | `node tools/smoke-test.js` | **Prueba de humo end-to-end.** Abre dos conexiones WebSocket reales, completa el handshake de las dos y recorre el protocolo: centinela `go`, `HELLO`→`WELCOME`, movimiento entre jugadores, chat en ambos sentidos y `DESPAWN` al desconectar. Sale con código 1 si algo falla. Es la red de seguridad para todo lo que venga después. |
+| `node tools/check-client.js` | **Verifica que el cliente puede cargar todo lo que pide.** Recorre las dependencias de `define`/`require`/`importScripts` de `client/js` y pide cada destino por HTTP, además de comprobar que cada sprite tiene sus PNG en las tres escalas. Va por HTTP a propósito: el fallo que motivó esta herramienta era que un archivo existía en disco pero el servidor no lo exponía, y eso no se ve desde el sistema de archivos. |
 | `node tools/diag-world.js` | Arranca un mundo contra el mapa real y comprueba que quedó inicializado: mapa, rejilla de colisiones, zonas, áreas de mobs, cofres y entidades estáticas. |
 | `node tools/diag-protocol.js` | Conecta un bot y **vuelca todos los frames** que recibe. Distingue los dos caminos de envío del servidor (directo y por cola), que fallan de formas muy distintas. |
 | `node tools/audit-globals.js` | Detecta dependencias de globales implícitas en `server/js`. Ver *Deuda técnica*. |
@@ -153,7 +155,11 @@ corregido, todo verificado con las pruebas de `tools/`.
 
 ### Añadido
 
-- Servidor estático integrado: un solo puerto sirve cliente y WebSocket.
+- Servidor estático integrado con **varias raíces montadas**: un solo puerto sirve
+  cliente y WebSocket, y `shared/` se expone en `/shared` porque el cliente pide
+  el módulo compartido con una ruta relativa que sale de su propio árbol
+  (`'../../shared/js/gametypes'` en `client/js/game.js`). Sin ese montaje el
+  navegador recibía un 404 y el cliente moría con `Types is not defined`.
 - `logger.js` con niveles y marcas de tiempo.
 - Traza de depuración de pertenencia a zona (sólo para jugadores): un jugador que
   no quede registrado en su zona no recibe ni emite ningún broadcast, y es un

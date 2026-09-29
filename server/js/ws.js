@@ -88,10 +88,21 @@ const Server = cls.Class.extend({
  *   - upgrade          -> WebSocket del juego
  */
 WS.WebsocketServer = Server.extend({
-    init: function (port, clientRoot) {
+    init: function (port, clientRoot, sharedRoot) {
         this._super(port, clientRoot);
 
+        this.sharedRoot = sharedRoot || null;
+
         const self = this;
+
+        // El cliente pide el módulo compartido fuera de su propio árbol (ver
+        // client/js/game.js): hay que montar también `shared/`. Sin esto el
+        // navegador recibe un 404 en /shared/js/gametypes.js y el cliente muere
+        // con "Types is not defined".
+        this.staticHandler = clientRoot ? StaticServer.createHandler({
+            '/': clientRoot,
+            '/shared': sharedRoot
+        }) : null;
 
         this._httpServer = http.createServer(function (request, response) {
             // URL de WHATWG en vez de url.parse(): elimina el aviso de
@@ -114,7 +125,7 @@ WS.WebsocketServer = Server.extend({
                 return;
             }
 
-            if (StaticServer.serve(request, response, self.clientRoot, pathname)) {
+            if (self.staticHandler && self.staticHandler(request, response, pathname)) {
                 return;
             }
 
@@ -143,7 +154,8 @@ WS.WebsocketServer = Server.extend({
             log.info('Server is listening on port ' + port);
             if (self.clientRoot) {
                 log.info('Client: http://localhost:' + port + '/  (sirviendo ' +
-                    path.resolve(self.clientRoot) + ')');
+                    path.resolve(self.clientRoot) +
+                    (self.sharedRoot ? ' y ' + path.resolve(self.sharedRoot) + ' en /shared' : '') + ')');
             }
         });
     },

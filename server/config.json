@@ -5,5 +5,6 @@
     "nb_worlds": 1,
     "map_filepath": "./server/maps/world_server.json",
     "client_root": "./client",
+    "shared_root": "./shared",
     "metrics_enabled": false
 }

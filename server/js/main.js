@@ -48,8 +48,9 @@ function main(config) {
 
     const mapFilepath = resolveProjectPath(config.map_filepath);
     const clientRoot = config.client_root ? resolveProjectPath(config.client_root) : null;
+    const sharedRoot = config.shared_root ? resolveProjectPath(config.shared_root) : null;
 
-    const server = new ws.WebsocketServer(config.port, clientRoot);
+    const server = new ws.WebsocketServer(config.port, clientRoot, sharedRoot);
     const metrics = config.metrics_enabled ? new Metrics(config) : null;
     const worlds = [];
     let lastTotalPlayers = 0;
