@@ -55,7 +55,6 @@ module.exports = {
     // ==========================================================================
     // Lo que el motor le ENVÍA a cada jugador
     // ==========================================================================
-    //
     // `viewWidth` y `viewHeight` son el área visible en tiles. Enviar de más gasta
     // ancho de banda en cada paso; enviar de menos hace que el jugador vea el borde
     // del mundo al caminar. El cliente de Tibia usa 15x11 para el mapa, y aquí se
@@ -80,6 +79,12 @@ module.exports = {
     ip: '127.0.0.1',
     loginProtocolPort: 7171,
     gameProtocolPort: 7172,
+
+    // Puerto del servidor de juego nuevo. Se separa de los dos de arriba, que son
+    // los de Tibia y hoy sólo sirven de referencia: el motor nuevo habla JSON
+    // sobre WebSocket, no el protocolo binario, así que no puede compartir puerto
+    // con nada que espere aquél.
+    enginePort: 8080,
     maxPlayers: ES_DESARROLLO ? 50 : 500,
     maxPacketsPerSecond: 50,
 

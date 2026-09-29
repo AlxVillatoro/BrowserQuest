@@ -120,7 +120,7 @@ falta tocar el motor para añadir un hechizo, la arquitectura está mal.
 | IA de monstruos: ver, perseguir, atacar | hecho y probado |
 | Protocolo y vista (qué ve el cliente) | hecho y probado |
 | Sesiones y autoridad del servidor | hecho y probado |
-| Servidor WebSocket | pendiente (la capa de sesión ya no depende del transporte) |
+| Servidor WebSocket, con agrupado por tick | hecho y probado por red |
 | Cliente que consuma el protocolo nuevo | pendiente |
 | Hechizos de área, invocación, huida | pendiente |
 | Frases de los monstruos (`voices`) | pendiente (los datos ya se cargan) |
