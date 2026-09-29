@@ -428,6 +428,21 @@ class GameSession {
             (result.stacked ? ' (se suma a lo que ya llevabas)' : '') + '.');
         this.sendInventory();
 
+        /*
+         * Y HAY QUE MARCAR LA VISTA COMO SUCIA.
+         *
+         * La vista sólo recalcula las casillas cuando el jugador se mueve o cuando se le dice
+         * que algo cambió. Recoger cambia una casilla —la que se queda sin el objeto— y sin
+         * esto el cliente seguía viendo el objeto en el suelo hasta que el jugador daba un
+         * paso. El inventario sí se actualizaba, así que el objeto aparecía en los dos sitios
+         * a la vez: en la barra de abajo y en el suelo.
+         *
+         * Es el mismo fallo de siempre en este proyecto: dos piezas correctas y el cable que
+         * las une, que no está. Y no se veía en ninguna prueba porque todas miraban el
+         * inventario o el tile del MOTOR, y el motor sí estaba bien.
+         */
+        this.view.markDirty(this.playerId);
+
         return { handled: true, action: 'pickup', picked: true, item: result.item };
     }
 
@@ -441,6 +456,11 @@ class GameSession {
 
         this.sendText('Has soltado ' + this._itemLabel(result.item.typeId, result.item.count) + '.');
         this.sendInventory();
+
+        // Igual que al recoger: soltar pone un objeto en el suelo, y el cliente no lo vería
+        // hasta moverse. Aquí el fallo es al revés —el objeto no aparece— y se nota menos,
+        // que es justo lo que lo hace durar más.
+        this.view.markDirty(this.playerId);
 
         return { handled: true, action: 'drop', dropped: true, item: result.item };
     }
