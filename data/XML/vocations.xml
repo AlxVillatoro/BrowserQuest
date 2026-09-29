@@ -7,8 +7,8 @@
     quests. No es contenido de mundo y no lo tocan los scripts.
 
     El reparto de formatos del proyecto sigue ese criterio: XML para lo
-    declarativo y estable (una tabla de multiplicadores), Lua para lo que lleva
-    lógica. Por eso los monstruos y los hechizos son Lua y las vocaciones no.
+    declarativo y estable (una tabla de multiplicadores), código para lo que lleva
+    lógica. Por eso los monstruos y los hechizos son módulos y las vocaciones no.
 -->
 <vocations>
 

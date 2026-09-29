@@ -56,16 +56,18 @@ desalinea, el síntoma clásico es ver columnas o cadáveres donde debería habe
 ## 2. Estructura de directorios
 
 ```
-config.lua            configuración del motor (se ejecuta como Lua)
+config.js             configuración del motor (un módulo que exporta un objeto)
 engine/               MOTOR
   main.js               arranque
   core/
     engine.js           orden de carga
-    config.js           carga de config.lua
+    config.js           carga de config.js
     logger.js
-  lua/
-    runtime.js          host de Lua (fengari)
-    api.js              primitivas que cruzan la frontera
+  scripting/
+    registry.js         registro de contenido y despacho de eventos
+    loader.js           carga de los módulos de data/
+    entities.js         envoltorios Player / Item / Position
+    game.js             la API `Game` y su instalación como global
   data/
     xml.js              items.xml, data/XML/*.xml
   world/
@@ -73,9 +75,8 @@ engine/               MOTOR
 data/                 CONTENIDO (el "datapack")
   items/items.xml       definiciones semánticas de items
   XML/vocations.xml     definiciones del motor
-  lib/core/*.lua        librería Lua: la API cómoda
   scripts/              contenido programado (acciones, movimientos, comandos)
-  monsters/             monstruos, en Lua
+  monsters/             monstruos, en JavaScript
   world/                mapas
 client/               CLIENTE (assets y render)
 tools/                herramientas y pruebas
@@ -89,12 +90,12 @@ falta tocar el motor para añadir un hechizo, la arquitectura está mal.
 
 | Pieza | Estado |
 |---|---|
-| `config.lua` + carga | hecho y probado |
+| `config.js` + carga | hecho y probado |
 | `items.xml` + `data/XML/*.xml` | hecho y probado |
-| Runtime de Lua + API primitiva | hecho y probado |
-| Librería Lua (`data/lib/`) | hecho y probado |
 | Registro y despacho de eventos | hecho y probado |
-| Monstruos en Lua | hecho y probado |
+| Envoltorios de entidad y API `Game` | hecho y probado |
+| Monstruos como módulos | hecho y probado |
+| Recarga en caliente | hecho y probado |
 | Mapas, tiles, movimiento | pendiente |
 | Protocolo y red | pendiente |
 | Persistencia | pendiente |
@@ -104,107 +105,163 @@ falta tocar el motor para añadir un hechizo, la arquitectura está mal.
 
 ## 3. Decisiones de diseño
 
-### 3.1 La configuración es Lua, no JSON
+### 3.1 La expansión es JavaScript
 
-`config.lua` se **ejecuta**, y sus asignaciones de primer nivel se convierten en
-claves de configuración. Las claves se extraen del propio archivo, así que añadir
-una opción no obliga a tocar el motor.
+**Decisión del responsable del proyecto**, y la razón práctica que la respalda es
+fuerte: elimina una dependencia, elimina un lenguaje del proyecto y **elimina la
+frontera que dominaba el coste**.
 
-Lo que esto habilita y un JSON no puede dar sin inventar un dialecto:
+En la etapa anterior el motor ejecutaba Lua (fengari) y cada evento cruzaba
+JS↔Lua. Esa frontera era el cuello de botella real, no la velocidad del
+intérprete, y obligaba a diseñar la API con identificadores en vez de objetos para
+no pagar entre 2x y 18,8x por llamada. Con el contenido en JavaScript **no hay
+frontera**: un handler es una función y una entidad es un objeto.
 
-```lua
-experienceStages = {
-    { minlevel = 1,   maxlevel = 50,  multiplier = 100 },
-    { minlevel = 51,  maxlevel = 100, multiplier = 50 },
-}
+**Lo que se conservó de aquella investigación**, porque sigue siendo cierto y
+ahorra tener que repetirla:
+
+- Los dos runtimes de Lua viables en Node eran `wasmoon` (Lua 5.4 en WASM) y
+  `fengari` (Lua 5.3 en JavaScript), ninguno con compilación nativa. Se midió que
+  **fengari despacha 1,5x más eventos por segundo que wasmoon**, porque el coste
+  está en cruzar la frontera y wasmoon cruza JS↔WASM. "WASM será más rápido" sólo
+  se cumple con Lua puro y CPU-intensivo, no con eventos cortos.
+- Los bindings nativos de Lua para Node están muertos: `node-lua` sin tocar desde
+  2017 sobre `node-gyp`, `luajit` despublicado de npm en 2017, y LuaJIT en WASM
+  no existe (necesita `mmap` con `PROT_EXEC`; WASM es AOT sin W^X). Si algún día
+  se quisiera volver a Lua, el camino es `wasmoon`, no un binding nativo.
+- **Ninguna de las dos librerías ofrece sandbox real**: un `while true do end`
+  bloquea el bucle de eventos y nada limita la memoria. Eso también es cierto del
+  JavaScript, así que no se pierde nada por este lado (ver §6).
+
+**Lo que se gana además**: un módulo de contenido es un módulo de Node, así que
+tiene a mano todo el ecosistema (`npm`), las herramientas de depuración del
+lenguaje, los tipos y las pruebas. Con Lua, cada utilidad había que escribirla
+otra vez.
+
+### 3.2 La configuración es un módulo, no un formato
+
+`config.js` exporta un objeto, y ese objeto **es** la configuración: no hay
+formato que parsear ni lista de claves que mantener sincronizada.
+
+Frente a JSON, y con el mismo argumento que usaba TFS para su `config.lua`, admite
+lo que un formato de datos no puede:
+
+```js
+const ENTORNO = process.env.NODE_ENV || 'development';
+
+module.exports = {
+    maxPlayers: ENTORNO === 'production' ? 500 : 50,
+    experienceStages: [
+        { minlevel: 1,   maxlevel: 50,  multiplier: 100 },
+        { minlevel: 151, maxlevel: 0,   multiplier: 10 }   // 0 = sin tope
+    ]
+};
 ```
 
-Es el patrón de TFS y la razón de que su `config.lua.dist` tenga 23 KB de opciones
-legibles.
+Cálculos, condicionales por entorno y estructuras con campos con nombre. La
+última etapa de experiencia no tiene tope, y un JSON obligaría a inventar un
+número centinela y documentarlo.
 
-### 3.2 XML para lo declarativo, Lua para lo que lleva lógica
+**Dos reglas que sí conviene respetar**, tomadas del análisis de TFS:
 
-| Va en XML | Va en Lua |
+- **Nada de efectos secundarios al cargarse.** Abrir puertos o conectar a la base
+  de datos en el archivo de configuración convierte la configuración en un
+  programa, y entonces no se puede cargar para inspeccionarla.
+- **Configuración estática y dinámica son distintas.** Puertos, nombre del mapa y
+  credenciales se leen una vez y **no se recargan**; rates, límites y etapas sí.
+  Confundirlas lleva a esperar que un `/reload` cambie el puerto, que no lo hará.
+
+TFS además aplica `getEnv("MYSQL_HOST", valorDelArchivo)`: el archivo da el valor
+por defecto y el entorno puede sobrescribirlo, que es el patrón cómodo para
+contenedores. Merece la pena copiarlo cuando haya base de datos.
+
+### 3.3 XML para lo declarativo, código para lo que lleva lógica
+
+| Va en XML | Va en código |
 |---|---|
 | Vocaciones, outfits, grupos, mounts, quests | Monstruos, hechizos, acciones, movimientos, comandos |
 | Tablas de multiplicadores y fórmulas | Cualquier cosa con condicionales, estado o azar |
 
 Un monstruo acaba necesitando ataques condicionales, invocaciones, gritos con
 probabilidad y loot con rangos. Forzar eso a XML produce dialectos imposibles de
-mantener. **En TFS moderno los monstruos son Lua, no XML**, y aquí se copia esa
+mantener. **En TFS moderno los monstruos son código, no XML**, y aquí se copia esa
 decisión a propósito.
 
-### 3.3 El runtime de Lua: fengari, y por qué
+Dos detalles prácticos del formato, verificados en el ecosistema:
 
-Se compararon los dos runtimes viables en Node. El resultado fue **contra la
-intuición**: el WASM no gana.
+- **`items.xml` de TFS está en `iso-8859-1`, no en UTF-8.** Leerlo como UTF-8
+  destroza los nombres con acentos. Hay que declarar la codificación al leer.
+- **Validar con XSD no merece la pena aquí.** El esquema real de TFS no es
+  expresable de forma útil (el `<attribute key="X" value="Y"/>` es genérico y
+  anidable), y XSD daría "documento válido", no "el juego funcionará". Los fallos
+  reales son semánticos: loot que apunta a un item inexistente, `fromid > toid`,
+  un `script` que no existe, un itemid duplicado. Lo que hace falta es un
+  **validador de dominio propio** que informe de todos los errores con archivo y
+  línea.
 
-| | wasmoon (Lua 5.4/WASM) | fengari (Lua 5.3/JS) |
-|---|---|---|
-| Arranque de la VM | 168 ms | **69 ms** |
-| Despacho con reentrada en JS | 13.123 eventos/s | **19.666 eventos/s** |
-| Despacho con lógica pura | 13.699 eventos/s | **36.765 eventos/s** |
-| Compilación nativa | no | no |
+### 3.4 Las firmas de los handlers son las de TFS
 
-**Por qué.** El coste dominante no es ejecutar Lua, es **cruzar la frontera**, y
-wasmoon cruza JS↔WASM en cada llamada. "WASM será más rápido" sólo se cumpliría
-con Lua puro y CPU-intensivo (un pathfinding escrito en Lua, por ejemplo), no
-despachando eventos cortos, que es el caso real. Esa comparación se midió con
-ambos runtimes en la misma corrida y el mismo trabajo; las cifras de la tabla
-anterior salen de corridas distintas y no son comparables entre sí.
-
-Ninguno de los dos necesita compilador de C++ en Windows, que era un requisito.
-El banco de pruebas queda en `tools/bench-lua.js` para poder repetir la medición
-(compara los dos runtimes si `wasmoon` está instalado).
-
-### 3.4 La API de Lua usa identificadores, y el azúcar vive en Lua
-
-Ésta es la decisión con más impacto en el rendimiento, y se tomó midiendo tres
-alternativas:
-
-| Forma | Coste relativo | Sintaxis |
-|---|---|---|
-| Identificadores desnudos | 1,00x (suelo, muy estable) | `Engine.getPlayerName(id)` |
-| **Shim orientado a objetos en Lua** | **2,0x – 4,0x** | **`player:getName()`** |
-| Userdata de JavaScript (`pushjs`) | 3,9x – 18,8x | `player:getName()` |
-
-Las tres miden el mismo trabajo: dos llamadas a la API y una operación de cadena.
-
-**Sobre la precisión de estos números.** El *orden* es robusto y se ha
-reproducido en todas las corridas: identificadores < shim < userdata. Las
-*magnitudes* no lo son: el shim se movió entre 2,0x y 4,0x, y el userdata entre
-3,9x y 18,8x según la corrida. La causa es que las variantes con metatabla
-generan mucha basura para el recolector, y el recolector decide cuándo. Lo que sí
-es estable es la conclusión cualitativa: **el shim es entre 1,3x y 4,7x más
-rápido que el userdata**, y por eso se eligió. El banco queda en
-`tools/bench-lua.js` para poder repetirlo, y sus cifras deben leerse como rangos,
-no como constantes.
-
-**Conclusión.** La frontera sólo cruza enteros y cadenas. La comodidad
-(`player:getPosition()`) se construye **en Lua**, en `data/lib/`, con una
-metatabla sobre el identificador. Se obtiene la sintaxis de TFS por menos de la
-mitad de lo que costaría envolver las entidades como userdata, y encima el azúcar
-queda como código Lua que cualquiera puede leer y extender.
-
-Además, `Player` sólo guarda el identificador y pregunta al motor en cada
-método. Eso garantiza que un script **no pueda quedarse con una copia obsoleta**
-del estado del mundo, que es la clase de fallo más difícil de depurar en un
-servidor de juego.
-
-### 3.5 El orden de carga está fijado
+Se copian literalmente, y están verificadas en el código de The Forgotten Server,
+no deducidas:
 
 ```
-1. config.lua        el resto de rutas sale de aquí
-2. XML               items.xml y data/XML/*.xml rellenan los tipos
-3. API primitiva     se publica `Engine` antes de que nadie la use
-4. data/lib/         la librería construye Game, Player, Action sobre Engine
-5. envoltorios       se resuelven y referencian para poder despachar
-6. contenido         data/scripts/ y data/monsters/, que ya pueden usar todo
+onUse(player, item, fromPosition, target, toPosition, isHotkey)      6 args
+onSay(player, words, param, type)                                    4 args
+onStepIn / onStepOut(creature, item, position, fromPosition)         4 args
+onEquip / onDeEquip(player, item, slot, isCheck)                     4 args
+onAddItem / onRemoveItem(moveitem, tileitem, position)               3 args
 ```
 
-Invertir 3 y 4, o 4 y 6, produce errores de `nil value` que parecen del script y
-son del orden de arranque. Es el fallo clásico al montar un datapack, así que el
-orden está fijado en el código y no se deja al azar.
+**La firma cambia según el tipo de evento, y eso es una trampa real**: pasar los
+argumentos de `stepin` a un handler de `equip` produce un handler que recibe
+basura sin dar ningún error. Por eso el despacho construye los argumentos según el
+tipo, en vez de tener una sola lista.
+
+Se copian por una razón práctica: quien ya sabe escribir un datapack reconoce el
+patrón, y una firma inventada obliga a aprender de cero. Además, `onSay` conserva
+el cuarto argumento `type` (el canal de chat) en vez de recortarlo.
+
+Un aviso para cuando se traigan datapacks antiguos: `doCreatureSay`,
+`doTeleportThing` y compañía son la API de **TFS 0.3/0.4**, no la de las versiones
+modernas, donde la API es orientada a objetos (`player:getPosition()`). Traducir un
+datapack antiguo es traducir esas llamadas, no sólo el lenguaje.
+
+### 3.5 Los envoltorios aíslan el estado del mundo
+
+Los handlers **no reciben los objetos del mundo**, sino envoltorios alrededor de un
+identificador: `Player`, `Item`, `Position`. No es cosmético. Si un script
+recibiera el objeto real, podría mutarlo sin pasar por ninguna regla —ponerse
+999999 de vida, teletransportarse fuera del mapa, vaciar el inventario de otro—.
+
+Con un envoltorio, todo lo que hace un script pasa por la API y ahí se puede
+validar. Y `getPosition()` devuelve una **copia**: mutarla no mueve a nadie hasta
+llamar a `teleportTo`. Sin eso, un script que consulta una posición para calcular
+algo movería al jugador sin querer.
+
+En Lua esto costaba entre 2x y 4x. En JavaScript es una clase normal y no cuesta
+nada extra. Ésa es la ganancia concreta, medida, de haber dejado Lua.
+
+**La única global del proyecto** es `Game`, la superficie de scripting, y es
+deliberada: es lo que hace TFS, permite que un módulo de contenido no importe
+nada, y el motor guarda y restaura el valor anterior al cerrarse. Todo lo demás
+evita globales a propósito — basta ver `tools/audit-globals.js` y el fallo que
+motivó ese script.
+
+### 3.6 El orden de carga está fijado
+
+```
+1. config.js         el resto de rutas y opciones sale de aquí
+2. Definiciones XML  items.xml y data/XML/*.xml rellenan los tipos
+3. Mundo             el estado, que es de quien son los tipos cargados
+4. Registro          acciones, movimientos, comandos y monstruos
+5. Game              se instala ANTES de cargar contenido, porque un módulo
+                     puede usarlo ya al cargarse
+6. Contenido         data/scripts/ y data/monsters/, que ya pueden usar todo
+```
+
+Invertir 3 y 6, o 5 y 6, produce errores que parecen del script y son del orden de
+arranque. Es el fallo clásico al montar un datapack, así que el orden está fijado
+en el código y no se deja al azar.
 
 ### 3.6 Los formatos: interoperabilidad sí, runtime no
 
@@ -259,36 +316,59 @@ contenido moderno, esta parte hay que sustituirla.
 
 ## 4. El modelo de extensibilidad
 
-Se reproduce el patrón RevScript de The Forgotten Server, que es el que la
-comunidad ya conoce. Un script real del motor, íntegro:
+Un módulo de contenido es un archivo `.js` que exporta una definición. **No hay
+función de registro que llamar**, así que no hay forma de olvidarla — que era un
+fallo silencioso en la etapa con Lua: el script se cargaba sin error y no hacía
+nada.
 
-```lua
-local action = Action()
+```js
+// data/scripts/actions/others/lever.js
 
-function action.onUse(player, item, fromPosition, target, toPosition, isHotkey)
-    local destination = player:getPosition()
-    destination:moveUpstairs()
+module.exports = {
+    type: 'action',
+    ids: [1948],
 
-    if not player:teleportTo(destination) then
-        player:sendTextMessage("No puedes subir aqui.")
-        return true
-    end
+    // Firma de TFS, verificada en su código:
+    // (player, item, fromPosition, target, toPosition, isHotkey)
+    onUse(player, item, fromPosition, target, toPosition, isHotkey) {
+        const destination = player.getPosition();   // devuelve una COPIA
+        destination.moveUpstairs();
 
-    player:sendTextMessage("Subes a " .. tostring(destination) .. ".")
-    return true
-end
+        if (!player.teleportTo(destination)) {
+            player.sendTextMessage('No puedes subir aqui.');
+            return true;
+        }
 
-action:id(1948)
-action:register()
+        player.sendTextMessage('Subes a ' + destination + '.');
+        return true;
+    }
+};
 ```
 
-Objetos de registro disponibles: `Action` (`onUse`), `MoveEvent` (`onStepIn`,
-`onStepOut`, `onEquip`, `onDeEquip`), `TalkAction` (`onSay`, con coincidencia por
-prefijo para que `/item 3031` active `/item`) y `Game.createMonsterType` para
-monstruos.
+Tres formas de exportar, por orden de frecuencia:
 
-Mantener este patrón no es nostalgia: significa que quien ya sabe escribir
-datapacks sabe escribir para este motor desde el primer minuto.
+| Forma | Cuándo usarla |
+|---|---|
+| Un objeto con `type` | Lo normal |
+| Un array de objetos | Varios registros en el mismo archivo |
+| Una función que recibe `{ action, movement, talkAction, monster }` | Generar definiciones en bucle o derivarlas de datos |
+
+Tipos disponibles: `action` (`onUse`), `movement` (`event` más el handler
+correspondiente), `talkaction` (`words` y `onSay`) y `monster`.
+
+Para **desactivar** un módulo basta con renombrarlo: sólo se carga lo que termina
+en `.js`, así que `lever.js.off` queda ignorado sin borrar nada.
+
+La **recarga en caliente** (`engine.reloadContent()` o `Game.reload()`) funciona de
+verdad porque el cargador descarta la caché de `require` antes de cada módulo. Sin
+eso devolvería el módulo antiguo y la recarga sería una mentira. El vaciado previo
+del registro es igual de importante: sin él, cada recarga duplicaría todos los
+eventos, que es el fallo que el propio TFS documenta en su script de recarga.
+
+Y una salvaguarda que evita un fallo difícil de ver: **el tick del mundo es
+síncrono**, así que un handler `async` devolvería una promesa que nadie espera y su
+efecto llegaría tarde o nunca. El motor lo detecta y lo avisa en voz alta en vez de
+aceptarlo en silencio.
 
 ---
 
@@ -297,9 +377,9 @@ datapacks sabe escribir para este motor desde el primer minuto.
 **Fase 1 — Base técnica.** *Hecho.* Servidor heredado modernizado, cliente
 servido, pruebas end-to-end y de diagnóstico en verde.
 
-**Fase 2 — Capa de datos y scripting.** *Hecho.* `config.lua`, definiciones XML,
-runtime de Lua, API primitiva, librería Lua, registro y despacho de eventos,
-monstruos en Lua. Verificado por `tools/test-engine.js`.
+**Fase 2 — Capa de datos y scripting.** *Hecho.* `config.js`, definiciones XML,
+registro y despacho de eventos, envoltorios de entidad, API `Game`, monstruos como
+módulos y recarga en caliente. Verificado por `tools/test-engine.js`.
 
 **Fase 3 — Mundo.** Formato interno de mapa (chunks), tiles y apilado
 (*stackpos*), movimiento por tiles con coste de paso, plantas múltiples (Z). El
@@ -327,5 +407,6 @@ sprite y sombra proyectada. Ver la sección de 2.5D del informe de mecánicas.
 | El cliente heredado es autoritativo en el movimiento | **Abierto.** Es lo contrario de la arquitectura objetivo |
 | Sin persistencia: todo se pierde al reiniciar | **Abierto** |
 | `.dat`/`.spr` sólo cubre hasta ~10.98 | Aceptado como alcance |
-| Lua 5.3 no es Lua 5.1: los scripts de la era 8.60 usan `unpack`, `setfenv`, etc. | **Abierto.** Hará falta una capa de compatibilidad si se quieren traer datapacks antiguos |
-| El motor no tiene sandbox de scripts | **Abierto.** Un script puede llamar a `os.exit`. Irrelevante mientras los scripts sean de confianza; bloqueante si algún día no lo son |
+| **Sin sandbox: el contenido es código de Node** | **Abierto y es el precio de la decisión.** Un módulo de `data/` puede leer archivos, abrir sockets o matar el proceso. Con Lua el riesgo era comparable pero el alcance menor. Es aceptable mientras el contenido sea del propio servidor; deja de serlo si algún día se aceptan datapacks de terceros, y entonces la respuesta son `worker_threads` con `resourceLimits`, no un sandbox dentro del mismo proceso |
+| El tick del mundo es síncrono; un handler puede bloquearlo | **Abierto.** Ni Lua ni JS permiten interrumpir código en ejecución de forma limpia. La mitigación realista es medir el tiempo por handler y poner en cuarentena el que se pase |
+

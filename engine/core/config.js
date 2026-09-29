@@ -1,44 +1,37 @@
 'use strict';
 
 /**
- * Carga de `config.lua`.
+ * Carga de `config.js`.
  *
- * La configuración del motor es código Lua que se ejecuta y deja sus claves en
- * variables globales, igual que en The Forgotten Server. Eso permite escribir
- * tablas anidadas y expresiones:
+ * Al ser un módulo de JavaScript, el objeto exportado **es** la configuración:
+ * no hay claves que extraer del código ni lista que mantener sincronizada, que
+ * era la parte delicada de la versión con Lua. Añadir una opción al archivo basta
+ * para que llegue al motor.
  *
- *     experienceStages = {
- *         { minlevel = 1, maxlevel = 50, multiplier = 100 },
- *     }
- *
- * En vez de mantener a mano una lista de claves (que se desincroniza en cuanto
- * alguien añade una opción), las claves se EXTRAEN del propio archivo: cualquier
- * asignación de primer nivel en `config.lua` se convierte en una clave de
- * configuración. Añadir una opción al archivo basta para que llegue al motor.
+ * Los valores por defecto de aquí son sólo los que el motor necesita para poder
+ * arrancar aunque el archivo no exista o esté incompleto. Todo lo demás lo
+ * declara la configuración.
  */
 
 const fs = require('fs');
 
-/** Valores de respaldo para lo que el motor necesita sí o sí. */
 const DEFAULTS = {
+    serverName: 'Avillatoro',
     dataDirectory: 'data',
     clientDirectory: 'client',
     itemsXml: 'data/items/items.xml',
     itemsOtb: 'data/items/items.otb',
     vocationsXml: 'data/XML/vocations.xml',
     outfitsXml: 'data/XML/outfits.xml',
-    monstersDirectory: 'data/monsters',
     scriptsDirectory: 'data/scripts',
-    libDirectory: 'data/lib',
+    monstersDirectory: 'data/monsters',
     worldDirectory: 'data/world',
     mapName: 'world',
     loginProtocolPort: 7171,
     gameProtocolPort: 7172,
     maxPlayers: 200,
-    serverName: 'Avillatoro',
-    luaEnabled: true,
+    scriptingEnabled: true,
     showScriptsLogInConsole: true,
-    reloadCommandEnabled: true,
     scriptErrorPolicy: 'abort',
     worldType: 'pvp',
     protectionLevel: 1,
@@ -46,9 +39,7 @@ const DEFAULTS = {
     newPlayerLevel: 1,
     newPlayerHealth: 150,
     newPlayerCap: 400,
-    newPlayerSpawnPosX: 100,
-    newPlayerSpawnPosY: 100,
-    newPlayerSpawnPosZ: 7,
+    newPlayerSpawnPos: { x: 100, y: 100, z: 7 },
     rateExperience: 1,
     rateSkill: 1,
     rateLoot: 1,
@@ -56,63 +47,36 @@ const DEFAULTS = {
 };
 
 /**
- * Elimina comentarios de línea y de bloque antes de buscar asignaciones, para
- * que un ejemplo comentado no se cuele como clave de configuración.
- */
-function stripComments(source) {
-    return source
-        .replace(/--\[\[[\s\S]*?\]\]/g, ' ')
-        .replace(/--[^\n]*/g, ' ');
-}
-
-/**
- * Extrae los nombres asignados en el primer nivel del archivo.
- * @returns {string[]}
- */
-function extractKeys(source) {
-    const clean = stripComments(source);
-    const keys = [];
-    const re = /^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=/gm;
-    let match;
-    while ((match = re.exec(clean)) !== null) {
-        if (keys.indexOf(match[1]) === -1) {
-            keys.push(match[1]);
-        }
-    }
-    return keys;
-}
-
-/**
  * Carga la configuración.
  *
- * @param {Object} runtime instancia de LuaRuntime
- * @param {string} filepath ruta de config.lua
+ * @param {string} filepath ruta de config.js
  * @param {Object} log
- * @returns {{config: Object, keys: string[], source: string|null}}
+ * @returns {{config: Object, source: string|null, declaredKeys: number}}
  */
-function load(runtime, filepath, log) {
-    const config = { ...DEFAULTS };
-
+function load(filepath, log) {
     if (!fs.existsSync(filepath)) {
-        log.warning('no se encontró ' + filepath + ': se usan los valores por defecto');
-        return { config: config, keys: Object.keys(DEFAULTS), source: null };
+        log.warning('no se encontro ' + filepath + ': se usan los valores por defecto');
+        return { config: { ...DEFAULTS }, source: null, declaredKeys: 0 };
     }
 
-    const source = fs.readFileSync(filepath, 'utf8');
-    const keys = extractKeys(source);
+    // Se descarta la caché para que recargar la configuración funcione.
+    delete require.cache[require.resolve(filepath)];
 
-    runtime.runFile(filepath);
+    const exported = require(filepath);
 
-    let applied = 0;
-    keys.forEach((key) => {
-        const value = runtime.getGlobal(key);
-        if (value !== undefined) {
-            config[key] = value;
-            applied += 1;
-        }
-    });
+    if (!exported || typeof exported !== 'object' || Array.isArray(exported)) {
+        throw new Error('config.js debe exportar un objeto de configuracion');
+    }
 
-    return { config: config, keys: keys, applied: applied, source: filepath };
+    // El archivo gana sobre los valores por defecto, pero las claves que no
+    // declare siguen teniendo un valor sensato.
+    const config = { ...DEFAULTS, ...exported };
+
+    return {
+        config: config,
+        source: filepath,
+        declaredKeys: Object.keys(exported).length
+    };
 }
 
-module.exports = { load, extractKeys, stripComments, DEFAULTS };
+module.exports = { load, DEFAULTS };

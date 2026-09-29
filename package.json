@@ -1,26 +1,24 @@
 {
     "name": "avillatoro",
-    "version": "0.2.0",
+    "version": "0.3.0",
     "private": true,
-    "description": "MMORPG 2D estilo Tibia con arquitectura de servidor de Tibia: motor, cliente, herramientas y datapack extensible por Lua y XML.",
+    "description": "MMORPG 2D estilo Tibia con arquitectura de servidor de Tibia: motor, cliente, herramientas y datapack extensible por modulos JavaScript y definiciones XML.",
     "license": "MPL-2.0",
     "engines": {
         "node": ">=20"
     },
     "scripts": {
         "engine": "node engine/main.js",
-        "start": "node server/js/main.js",
+        "engine:reload": "node engine/main.js --reload",
         "test": "node tools/test-engine.js",
+        "start": "node server/js/main.js",
         "test:legacy": "node tools/smoke-test.js",
         "check:client": "node tools/check-client.js",
         "check:world": "node tools/diag-world.js",
-        "check:globals": "node tools/audit-globals.js",
-        "bench:lua": "node tools/bench-lua.js"
+        "check:globals": "node tools/audit-globals.js"
     },
     "dependencies": {
         "fast-xml-parser": "^5.11.2",
-        "fengari": "^0.1.5",
-        "fengari-interop": "^0.1.4",
         "underscore": "^1.13.8",
         "ws": "^8.22.0"
     }

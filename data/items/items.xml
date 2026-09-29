@@ -9,7 +9,7 @@
     real: completar, no crear.
 
     Los atributos son los que lee el motor: `weight`, `attack`, `defense`,
-    `weaponType`... y se consultan desde Lua con Game.getItemAttribute(id, clave).
+    `weaponType`... y se consultan con Game.getItemAttribute(id, clave).
 -->
 <items>
 

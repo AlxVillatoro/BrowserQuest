@@ -6,7 +6,7 @@ cuyo motor de tile, cliente Canvas y protocolo WebSocket se toman como base y se
 modernizan para Node.js actual.
 
 > Estado: **dos piezas funcionando y verificadas.** El **motor nuevo**
-> (`engine/` + `data/`) carga un datapack extensible por Lua y XML, con despacho
+> (`engine/` + `data/`) carga un datapack extensible por **módulos JavaScript** y definiciones XML, con despacho
 > de eventos probado. El **servidor heredado** (`server/`) sigue sirviendo el
 > cliente jugable mientras se migra al nuevo. Las decisiones de diseño, con la
 > evidencia que las respalda, están en [ARQUITECTURA.md](ARQUITECTURA.md).
@@ -19,21 +19,29 @@ Requiere **Node.js 20 o superior** (probado en Node 24).
 
 ```bash
 npm install
-npm start
+
+npm run engine    # arranca el motor nuevo y resume el datapack cargado
+npm test          # verifica el motor entero (36 comprobaciones)
+
+npm start         # arranca el servidor heredado, que sirve el juego jugable
 ```
 
-Y abre **http://localhost:8000/**. El mismo proceso sirve el cliente y el
-WebSocket, así que no hay nada más que configurar: no hace falta paso de build,
-ni servidor estático aparte, ni editar ningún JSON.
+Para jugar, `npm start` y abre **http://localhost:8000/**. El mismo proceso sirve
+el cliente y el WebSocket, así que no hace falta paso de build, ni servidor
+estático aparte.
 
-- `npm run dev` — igual, con recarga automática al cambiar el servidor.
-- `npm start -- server/config_local.json` — usar un archivo de configuración
-  alternativo (por ejemplo `server/config_debug.json`, con `debug_level: "debug"`).
+- `npm run engine:reload` — arranca el motor y comprueba la recarga en caliente.
+- `npm start -- server/config_local.json` — configuración alternativa del servidor
+  heredado (por ejemplo `server/config_debug.json`, con `debug_level: "debug"`).
+- `LOG_LEVEL=debug npm run engine` — con detalle de qué módulo de contenido carga.
 
 ### Configuración
 
-`server/config.json` son los valores por defecto; `server/config_local.json` (no
-versionado) los sobrescribe. Claves relevantes:
+Son **dos configuraciones distintas**, una por motor:
+
+- **`config.js`** — el motor nuevo. Es un módulo que exporta un objeto, así que
+  admite cálculos y condicionales por entorno. Ver [ARQUITECTURA.md](ARQUITECTURA.md).
+- **`server/config.json`** — el servidor heredado. Claves relevantes:
 
 | Clave | Significado |
 |---|---|
@@ -59,8 +67,7 @@ Todas se ejecutan con el servidor levantado (salvo `diag-world` y `audit-globals
 | `node tools/diag-world.js` | Arranca un mundo contra el mapa real y comprueba que quedó inicializado: mapa, rejilla de colisiones, zonas, áreas de mobs, cofres y entidades estáticas. |
 | `node tools/diag-protocol.js` | Conecta un bot y **vuelca todos los frames** que recibe. Distingue los dos caminos de envío del servidor (directo y por cola), que fallan de formas muy distintas. |
 | `node tools/audit-globals.js` | Detecta dependencias de globales implícitas en `server/js`. Ver *Deuda técnica*. |
-| `node tools/test-engine.js` | **Prueba del motor nuevo.** Arranca el datapack entero y verifica el contrato completo: `config.lua` (incluidas tablas anidadas), `items.xml`, `vocations.xml`, la librería Lua, el registro de contenido y el **despacho de eventos**, comprobando que un script mueve a un jugador y crea items de verdad. |
-| `node tools/bench-lua.js` | Mide el coste de cruzar la frontera JS↔Lua con las tres formas posibles de pasar una entidad. Es la evidencia de por qué la API usa identificadores y el azúcar vive en Lua. |
+| `node tools/test-engine.js` | **Prueba del motor nuevo (36 comprobaciones).** Arranca el datapack entero y verifica el contrato completo: `config.js` con sus estructuras anidadas, `items.xml`, `vocations.xml`, la carga de módulos de contenido, las **firmas exactas** de cada tipo de evento, el **despacho** (un handler mueve a un jugador y crea items de verdad), la recarga en caliente y el aislamiento del estado. |
 
 ---
 
@@ -70,7 +77,8 @@ El proyecto tiene **dos motores** ahora mismo, y es deliberado:
 
 - **`engine/` + `data/`** — el motor nuevo, con la arquitectura de un servidor de
   Tibia: el motor carga el datapack y es dueño del estado del mundo, el contenido
-  es Lua y XML, y la separación entre motor y contenido es estricta.
+  son **módulos JavaScript** y las definiciones declarativas son XML, y la
+  separación entre motor y contenido es estricta.
 - **`server/`** — el servidor heredado de BrowserQuest, modernizado y con pruebas.
   Sigue sirviendo el cliente jugable y se irá absorbiendo por el nuevo.
 
@@ -78,18 +86,17 @@ El plan de migración y la justificación de cada decisión están en
 [ARQUITECTURA.md](ARQUITECTURA.md).
 
 ```
-config.lua       configuración del motor (se ejecuta como Lua)
+config.js        configuración del motor (un módulo que exporta un objeto)
 engine/          MOTOR NUEVO
   core/            arranque, carga de config, logger
-  lua/             host de Lua y API primitiva
+  scripting/       registro de contenido, cargador, envoltorios y API Game
   data/            lectura de items.xml y data/XML/*.xml
   world/           estado del mundo
 data/            DATAPACK (lo que toca un administrador de servidor)
   items/           items.xml
   XML/             vocaciones, outfits, grupos...
-  lib/core/        la API cómoda de Lua
-  scripts/         contenido programado
-  monsters/        monstruos, en Lua
+  scripts/         contenido programado (acciones, movimientos, comandos)
+  monsters/        monstruos, como módulos JavaScript
   world/           mapas
 client/js/       cliente (AMD/RequireJS, Canvas 2D, 3 capas de canvas)
 shared/js/       gametypes.js, compartido con el servidor heredado

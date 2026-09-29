@@ -3,11 +3,11 @@
 /**
  * Estado del mundo.
  *
- * El motor es el único dueño de esto: los scripts Lua nunca reciben estos
- * objetos, sólo sus identificadores, y piden los datos a través de la API. Eso
- * es lo que hace que Lua no pueda corromper el estado por accidente, y es la
- * razón de que en The Forgotten Server `player` sea un userdata que apunta a la
- * criatura en vez de una copia.
+ * El motor es el único dueño de esto: los módulos de contenido nunca reciben
+ * estos objetos, sólo envoltorios con identificadores, y piden los datos a través
+ * de la API. Eso es lo que hace que un módulo no pueda corromper el estado por
+ * accidente, y es la razón de que en The Forgotten Server `player` sea un userdata
+ * que apunta a la criatura en vez de una copia.
  *
  * De momento es un esqueleto: lo justo para que la capa de scripting tenga algo
  * real contra lo que despachar. El mapa, los tiles y el resto del mundo llegan
@@ -22,7 +22,7 @@ class World {
         this.players = new Map();      // id -> { id, name, position, health, level, vocation }
         this.items = new Map();        // id -> { id, itemId, name, count, position }
         this.itemTypes = new Map();    // itemId -> definición de items.xml
-        this.monsterTypes = new Map(); // nombre -> definición registrada desde Lua
+        this.monsterTypes = new Map(); // nombre -> definición registrada por el contenido
 
         // Registro de lo que hacen los scripts, para poder verificar en las
         // pruebas sin tener que espiar por dentro del estado del mundo.

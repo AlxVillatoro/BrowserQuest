@@ -3,21 +3,21 @@
 /**
  * Arranque del motor.
  *
- * El orden de carga NO es arbitrario: replica el de The Forgotten Server, y cada
- * paso depende del anterior.
+ * El orden de carga NO es arbitrario: cada paso depende del anterior.
  *
- *   1. `config.lua`      — el resto de rutas y opciones salen de aquí.
- *   2. Definiciones XML  — `items.xml` y `data/XML/*.xml` rellenan los tipos.
- *   3. API primitiva     — se publica `Engine` antes de que nadie la use.
- *   4. `data/lib/`       — la librería Lua construye `Game`, `Player`, `Action`
- *                          y los envoltorios de despacho SOBRE `Engine`.
- *   5. Envoltorios       — se resuelven y se referencian para poder despachar.
- *   6. Contenido         — `data/scripts/` y `data/monsters/`, que ya pueden
- *                          usar todo lo anterior.
+ *   1. config.js         el resto de rutas y opciones sale de aquí.
+ *   2. Definiciones XML  items.xml y data/XML/*.xml rellenan los tipos.
+ *   3. Mundo             el estado, que es de quien son los tipos cargados.
+ *   4. Registro          acciones, movimientos, comandos y monstruos.
+ *   5. Contenido         data/scripts/ y data/monsters/, que ya pueden usar todo.
  *
- * Invertir 3 y 4, o 4 y 6, produce errores de "nil value" en los scripts que
- * parecen del script y son del orden de arranque. Es el fallo clásico al montar
- * un datapack, así que el orden está fijado aquí y no se deja al azar.
+ * Invertir 2 y 5, o 3 y 5, produce errores que parecen del script y son del orden
+ * de arranque: es el fallo clásico al montar un datapack. Por eso el orden está
+ * fijado aquí y no se deja al azar.
+ *
+ * Nota sobre el contenido: los módulos se cargan con `require`, y antes de cada
+ * uno se descarta su entrada de caché. Sin eso, recargar en caliente devolvería
+ * el módulo antiguo y la recarga sería una mentira.
  */
 
 const fs = require('fs');
@@ -25,16 +25,17 @@ const path = require('path');
 
 const { createLogger } = require('./logger');
 const Config = require('./config');
-const { LuaRuntime } = require('../lua/runtime');
-const { createPrimitives } = require('../lua/api');
 const { World } = require('../world/world');
 const Xml = require('../data/xml');
+const { ScriptRegistry } = require('../scripting/registry');
+const { loadContent } = require('../scripting/loader');
+const { createGame, installGame } = require('../scripting/game');
 
 /**
  * @param {Object} [options]
  * @param {string} [options.rootDir] raíz del proyecto
- * @param {string} [options.configFile] ruta de config.lua
- * @param {string} [options.logLevel]
+ * @param {string} [options.configFile] ruta de config.js
+ * @param {string} [options.logLevel] debug | info | warning | error
  * @returns {Object} motor arrancado
  */
 function createEngine(options) {
@@ -44,96 +45,105 @@ function createEngine(options) {
 
     const resolve = (target) => (path.isAbsolute(target) ? target : path.resolve(rootDir, target));
 
-    const world = new World({ logger: log });
-    const runtime = new LuaRuntime({ rootDir: rootDir, logger: log });
-
     // --- 1. Configuración -------------------------------------------------
-    const configPath = resolve(settings.configFile || 'config.lua');
-    const loaded = Config.load(runtime, configPath, log);
+    const configPath = resolve(settings.configFile || 'config.js');
+    const loaded = Config.load(configPath, log);
     const config = loaded.config;
-    log.info('configuración: ' + (loaded.source ? loaded.applied + ' claves de ' + path.basename(loaded.source) : 'valores por defecto'));
+
+    log.info('configuracion: ' + (loaded.source
+        ? loaded.declaredKeys + ' claves declaradas en ' + path.basename(loaded.source)
+        : 'valores por defecto'));
 
     // --- 2. Definiciones XML ---------------------------------------------
+    const world = new World({ logger: log });
+
     const itemsPath = resolve(config.itemsXml);
     if (fs.existsSync(itemsPath)) {
         world.itemTypes = Xml.loadItems(itemsPath);
         log.info('items.xml: ' + world.itemTypes.size + ' items definidos');
     } else {
-        log.warning('no se encontró ' + itemsPath + ': no habrá tipos de item');
+        log.warning('no se encontro ' + itemsPath + ': no habra tipos de item');
     }
 
-    const vocationsPath = resolve(config.vocationsXml);
     let vocations = new Map();
+    const vocationsPath = resolve(config.vocationsXml);
     if (fs.existsSync(vocationsPath)) {
         vocations = Xml.loadVocations(vocationsPath);
         log.info('vocations.xml: ' + vocations.size + ' vocaciones');
     } else {
-        log.warning('no se encontró ' + vocationsPath);
+        log.warning('no se encontro ' + vocationsPath);
     }
 
-    // --- 3. API primitiva -------------------------------------------------
-    runtime.registerApi(createPrimitives({ runtime: runtime, world: world, log: log }));
+    // --- 3. Registro de contenido -----------------------------------------
+    const registry = new ScriptRegistry({ world: world, logger: log });
 
-    // --- 4. Librería Lua --------------------------------------------------
-    let libFiles = [];
-    const libDir = resolve(config.libDirectory);
-    if (config.luaEnabled) {
-        libFiles = runtime.runDirectory(libDir, {
-            verbose: config.showScriptsLogInConsole,
-            onError: 'abort'
-        });
-        log.info('data/lib: ' + libFiles.length + ' archivos cargados');
+    const loadOptions = () => ({
+        directories: [resolve(config.scriptsDirectory), resolve(config.monstersDirectory)],
+        rootDir: rootDir,
+        logger: log,
+        onError: config.scriptErrorPolicy === 'skip' ? 'skip' : 'abort',
+        verbose: config.showScriptsLogInConsole
+    });
+
+    /**
+     * Recarga el contenido de data/ sin reiniciar el proceso, como el `/reload`
+     * de TFS. Hereda sus dos límites, que conviene tener presentes: NO recarga
+     * el mapa ni la configuración estática (puertos, nombre del mapa).
+     *
+     * El vaciado previo es imprescindible: sin él, recargar duplicaría cada
+     * registro. Es el fallo que el propio TFS documenta en su script de recarga.
+     */
+    const reloadContent = () => {
+        registry.actions.clear();
+        registry.movements.clear();
+        registry.talkActions.length = 0;
+        registry.registeredScripts.clear();
+        world.monsterTypes.clear();
+
+        const result = loadContent(registry, loadOptions());
+        log.info('contenido recargado: ' + result.files + ' modulos, ' +
+            result.definitions + ' definiciones');
+        return result;
+    };
+
+    // --- 4. API de scripting ----------------------------------------------
+    // `Game` se instala ANTES de cargar el contenido, porque un módulo puede
+    // usarlo ya al cargarse (por ejemplo, para generar definiciones en bucle).
+    const game = createGame({
+        world: world,
+        registry: registry,
+        logger: log,
+        config: config,
+        reloadContent: reloadContent
+    });
+    const restoreGame = installGame(game);
+
+    // --- 5. Contenido -----------------------------------------------------
+    let content = { files: 0, definitions: 0, byKind: { action: 0, movement: 0, talkaction: 0, monster: 0 } };
+
+    if (config.scriptingEnabled) {
+        content = loadContent(registry, loadOptions());
+        log.info('contenido: ' + content.files + ' modulos cargados, ' +
+            content.definitions + ' definiciones registradas');
     } else {
-        log.warning('luaEnabled = false: no se carga data/lib');
+        log.warning('scriptingEnabled = false: no se carga contenido');
     }
-
-    // --- 5. Envoltorios de despacho --------------------------------------
-    runtime.resolveDispatchWrappers();
-
-    // --- 6. Contenido -----------------------------------------------------
-    const onError = config.scriptErrorPolicy === 'skip' ? 'skip' : 'abort';
-    let scriptFiles = [];
-    let monsterFiles = [];
-
-    if (config.luaEnabled) {
-        const scriptsDir = resolve(config.scriptsDirectory);
-        scriptFiles = runtime.runDirectory(scriptsDir, {
-            verbose: config.showScriptsLogInConsole,
-            onError: onError
-        });
-        log.info('data/scripts: ' + scriptFiles.length + ' scripts cargados');
-
-        const monstersDir = resolve(config.monstersDirectory);
-        monsterFiles = runtime.runDirectory(monstersDir, {
-            verbose: config.showScriptsLogInConsole,
-            onError: onError
-        });
-        log.info('data/monsters: ' + monsterFiles.length + ' monstruos cargados');
-    }
-
-    // Contadores de contenido registrado. Se exponen para que las pruebas y el
-    // arranque puedan informar de lo que hay sin hurgar en las estructuras.
-    const registeredScripts = new Set();
-    runtime.actions.forEach((entry) => registeredScripts.add(entry.script));
-    runtime.movements.forEach((entry) => registeredScripts.add(entry.script));
-    runtime.talkActions.forEach((entry) => registeredScripts.add(entry.script));
 
     const stats = {
-        configKeys: loaded.keys.length,
+        declaredConfigKeys: loaded.declaredKeys,
         items: world.itemTypes.size,
         vocations: vocations.size,
-        libFiles: libFiles.length,
-        scriptFiles: scriptFiles.length,
-        monsterFiles: monsterFiles.length,
-        registeredScripts: registeredScripts.size,
-        actions: runtime.actions.size,
-        movements: runtime.movements.size,
-        talkActions: runtime.talkActions.length,
+        contentFiles: content.files,
+        contentDefinitions: content.definitions,
+        byKind: content.byKind,
+        actions: registry.actions.size,
+        movements: registry.movements.size,
+        talkActions: registry.talkActions.length,
         monsterTypes: world.monsterTypes.size
     };
 
-    log.info('contenido registrado: ' + stats.actions + ' acciones, ' +
-        stats.movements + ' movimientos, ' + stats.talkActions + ' talkactions, ' +
+    log.info('registrado: ' + stats.actions + ' acciones, ' + stats.movements +
+        ' movimientos, ' + stats.talkActions + ' comandos, ' +
         stats.monsterTypes + ' tipos de monstruo');
 
     return {
@@ -141,24 +151,29 @@ function createEngine(options) {
         log: log,
         config: config,
         world: world,
-        runtime: runtime,
+        registry: registry,
+        game: game,
         vocations: vocations,
         stats: stats,
 
         dispatchAction(itemId, context) {
-            return runtime.dispatchAction(itemId, context);
+            return registry.dispatchAction(itemId, context);
         },
 
-        dispatchMovement(type, itemId, context) {
-            return runtime.dispatchMovement(type, itemId, context);
+        dispatchMovement(event, itemId, context) {
+            return registry.dispatchMovement(event, itemId, context);
         },
 
         dispatchTalkAction(words, context) {
-            return runtime.dispatchTalkAction(words, context);
+            return registry.dispatchTalkAction(words, context);
         },
 
+        reloadContent: reloadContent,
+
         shutdown() {
-            runtime.close();
+            // Se restaura el `Game` anterior para no pisar a otro motor que
+            // conviva en el mismo proceso (por ejemplo, en las pruebas).
+            restoreGame();
         }
     };
 }
