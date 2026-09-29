@@ -2,12 +2,24 @@
 var cls = require("./lib/class"),
     _ = require("underscore");
 
-module.exports = Metrics = Class.extend({
+module.exports = Metrics = cls.Class.extend({
     init: function(config) {
-        var self = this;
+        var self = this,
+            memcache;
         
         this.config = config;
-        this.client = new (require("memcache")).Client(config.memcached_port, config.memcached_host);
+        
+        // `memcache` ya no es una dependencia del proyecto: sólo se necesita
+        // si metrics_enabled=true. Se carga aquí, no en la cabecera del
+        // módulo, para que el arranque normal no dependa de él.
+        try {
+            memcache = require("memcache");
+        } catch(e) {
+            throw new Error("metrics_enabled=true requiere el paquete 'memcache'. " +
+                "Instalalo con `npm install memcache` o pon metrics_enabled=false en server/config_local.json.");
+        }
+        
+        this.client = new memcache.Client(config.memcached_port, config.memcached_host);
         this.client.connect();
         
         this.isReady = false;

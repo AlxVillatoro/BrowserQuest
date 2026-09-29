@@ -180,12 +180,16 @@ Types.rankedArmors = [
     Types.Entities.GOLDENARMOR
 ];
 
+// Se usa indexOf nativo en vez de _.indexOf a propósito: este archivo se carga
+// tal cual tanto en el navegador (donde `_` es una global de underscore.min.js)
+// como en Node (donde NO lo es). Depender de `_` aquí devolvía undefined en el
+// servidor, y con ello el daño y los HP se volvían NaN en silencio.
 Types.getWeaponRank = function(weaponKind) {
-    return _.indexOf(Types.rankedWeapons, weaponKind);
+    return Types.rankedWeapons.indexOf(weaponKind);
 };
 
 Types.getArmorRank = function(armorKind) {
-    return _.indexOf(Types.rankedArmors, armorKind);
+    return Types.rankedArmors.indexOf(armorKind);
 };
 
 Types.isPlayer = function(kind) {

@@ -1,7 +1,6 @@
 
 var cls = require("./lib/class"),
     _ = require("underscore"),
-    Log = require('log'),
     Entity = require('./entity'),
     Character = require('./character'),
     Mob = require('./mob'),
@@ -188,7 +187,7 @@ module.exports = World = cls.Class.extend({
         
         var regenCount = this.ups * 2;
         var updateCount = 0;
-        setInterval(function() {
+        this.interval = setInterval(function() {
             self.processGroups();
             self.processQueues();
             
@@ -765,6 +764,20 @@ module.exports = World = cls.Class.extend({
                 this.addAsIncomingToGroup(entity, groupId);
                 var oldGroups = this.removeFromGroups(entity);
                 var newGroups = this.addToGroup(entity, groupId);
+                
+                // Traza deliberada, sólo para jugadores: un jugador que no quede
+                // en `group.players` no recibe ni emite ningún broadcast, aunque
+                // `entity.group` esté bien puesto y todo lo demás funcione. Es el
+                // fallo más difícil de ver desde fuera porque no da ningún error.
+                if(entity.type === "player") {
+                    var grupo = entity.group ? this.groups[entity.group] : null;
+                    log.debug("grupo de jugador: id=" + entity.id +
+                        " pos=(" + entity.x + "," + entity.y + ")" +
+                        " groupId=" + groupId +
+                        " group=" + entity.group +
+                        " playersEnGrupo=" + (grupo ? grupo.players.length : 'n/a') +
+                        " esPlayer=" + (entity instanceof Player));
+                }
                 
                 if(_.size(oldGroups) > 0) {
                     entity.recentlyLeftGroups = _.difference(oldGroups, newGroups);

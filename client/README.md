@@ -1,23 +1,38 @@
-BrowserQuest client documentation
-=================================
+Documentación del cliente
+==========================
 
-The client directory should never be directly deployed to staging/production. Deployment steps:
+El cliente funciona **sin paso de build**. El servidor de desarrollo sirve el
+cliente y el WebSocket en el mismo puerto, y `js/config.js` deduce el destino del
+propio origen (`window.location`), así que basta con:
 
-1) Configure the websocket host/port:
+```bash
+npm start
+# abrir http://localhost:8000/
+```
 
-In the client/config/ directory, copy config_build.json-dist to a new config_build.json file.
-Edit the contents of this file to change host/port settings.
+## Overrides opcionales
 
-2) Run the following commands from the project root:
+- **Host y puerto**: `js/config.js` los toma de `window.location`. Para forzarlos,
+  crea `client/config/config_local.json` a partir de
+  `config_local.json-dist`; se carga por encima y su ausencia es tolerada.
+- `config_build.json` **ya no se usa**: era un artefacto que generaba el build y
+  que además estaba en `.gitignore`, de modo que en un clon limpio el `define`
+  fallaba y el cliente no arrancaba. Se ha eliminado esa dependencia.
 
-(Note: nodejs is required to run the build script)
+## Build de producción (opcional)
 
-* cd bin
-* chmod +x build.sh
-* ./build.sh
+Sigue siendo posible optimizar el cliente con el optimizador de RequireJS:
 
-This will use the RequireJS optimizer tool to create a client-build/ directory containing a production-ready version of BrowserQuest. 
+```bash
+cd bin
+chmod +x build.sh
+./build.sh
+```
 
-A build log file will also be created at bin/build.txt.
+Genera `client-build/`, un directorio autocontenido que se puede desplegar en
+cualquier sitio. El registro del build queda en `bin/build.txt`.
 
-The client-build directory can be renamed and deployed anywhere. It has no dependencies to any other file/folder in the repository.
+Nota: `bin/build.sh` y `client/js/build.js` son del proyecto original y aplican
+las pragmas `devHost`/`prodHost` de r.js. Como `js/config.js` ya no lee
+`config_build.json`, el resultado del build se conecta al mismo origen desde el
+que se sirve.

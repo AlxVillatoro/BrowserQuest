@@ -1,14 +1,19 @@
 {
-    "name": "BrowserQuest"
-  , "version": "0.0.1"
-  , "private": false 
-  , "dependencies": {
-    "underscore": ">0"
-    , "log": ">0"
-    , "bison": ">0"
-    , "websocket": ">0"
-    , "websocket-server": ">0"
-    , "sanitizer": ">0"
-    , "memcache": ">0"
-  }
+    "name": "avillatoro",
+    "version": "0.1.0",
+    "private": true,
+    "description": "MMORPG 2D multijugador estilo Tibia con sprites 2.5D. Derivado de Mozilla BrowserQuest (MPL-2.0).",
+    "license": "MPL-2.0",
+    "engines": {
+        "node": ">=20"
+    },
+    "scripts": {
+        "start": "node server/js/main.js",
+        "dev": "node --watch server/js/main.js",
+        "map": "node tools/processmap.js"
+    },
+    "dependencies": {
+        "underscore": "^1.13.8",
+        "ws": "^8.22.0"
+    }
 }

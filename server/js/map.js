@@ -1,6 +1,12 @@
 
-var cls = require('./lib/class')
-    path = require('path'),
+// OJO: aquí faltaba una coma después de require('./lib/class'). El ASI (inserción
+// automática de punto y coma) convertía el resto de la declaración en globales
+// implícitas: `fs`, `_`, `Utils` y `Checkpoint`. Ese `_` accidental era lo único
+// que hacía funcionar shared/js/gametypes.js en Node, y `Utils` era lo único que
+// hacía funcionar mob.js y mobarea.js. Es decir: el orden de require era
+// load-bearing y añadir la coma "obvia" rompía el juego entero en silencio.
+// Ya está corregido en todos los consumidores (ver tools/audit-globals.js).
+var cls = require('./lib/class'),
     fs = require('fs'),
     _ = require('underscore'),
     Utils = require('./utils'),
@@ -12,17 +18,23 @@ module.exports = Map = cls.Class.extend({
     
     	this.isLoaded = false;
     
-    	path.exists(filepath, function(exists) {
-            if(!exists) {
-                log.error(filepath + " doesn't exist.");
+    	// `path.exists` fue eliminado de Node hace años; leer directamente y
+    	// tratar el error cubre el mismo caso y además informa la causa real.
+    	fs.readFile(filepath, function(err, file) {
+            if(err) {
+                log.error(filepath + " doesn't exist. (" + err.code + ")");
                 return;
             }
         
-            fs.readFile(filepath, function(err, file) {
-                var json = JSON.parse(file.toString());
-            
-                self.initMap(json);
-            });
+            var json;
+            try {
+                json = JSON.parse(file.toString());
+            } catch(e) {
+                log.error(filepath + " is not valid JSON: " + e.message);
+                return;
+            }
+        
+            self.initMap(json);
         });
     },
 

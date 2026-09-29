@@ -1,9 +1,10 @@
 
 var _ = require('underscore'),
+    cls = require('./lib/class'),
     Types = require("../../shared/js/gametypes");
 
 (function() {
-    FormatChecker = Class.extend({
+    var FormatChecker = cls.Class.extend({
         init: function() {
             this.formats = [];
             this.formats[Types.Messages.HELLO] = ['s', 'n', 'n'],
@@ -56,4 +57,8 @@ var _ = require('underscore'),
     var checker = new FormatChecker;
     
     exports.check = checker.check.bind(checker);
+
+    // Exportado explícitamente: player.js lo instanciaba como global implícita
+    // creada aquí por una asignación sin `var`.
+    exports.FormatChecker = FormatChecker;
 })();

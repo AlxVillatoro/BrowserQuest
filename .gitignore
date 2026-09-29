@@ -3,6 +3,11 @@ client-build
 build.txt
 config_build.json
 config_local*
+
+# Caché de npm reubicada dentro del proyecto: el sandbox de DSH sólo permite
+# escribir en el workspace, y la caché global de npm vive fuera de él.
+.npm-cache
+
 client/audio/music
 .DS_Store
 *.swp

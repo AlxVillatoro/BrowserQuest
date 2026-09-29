@@ -1,6 +1,7 @@
 
 var Utils = require('./utils'),
-    Types = require("../../shared/js/gametypes");
+    Types = require("../../shared/js/gametypes"),
+    Item = require('./item');
 
 module.exports = Chest = Item.extend({
     init: function(id, x, y) {
@@ -12,11 +13,15 @@ module.exports = Chest = Item.extend({
     },
     
     getRandomItem: function() {
-        var nbItems = _.size(this.items),
+        // `this.items` es un array de kinds. Se usa .length en vez de _.size
+        // porque `_` no existe como global en Node (ver tools/audit-globals.js):
+        // abrir un cofre lanzaba ReferenceError y el contenido nunca aparecía.
+        var items = this.items || [],
+            nbItems = items.length,
             item = null;
 
         if(nbItems > 0) {
-            item = this.items[Utils.random(nbItems)];
+            item = items[Utils.random(nbItems)];
         }
         return item;
     }

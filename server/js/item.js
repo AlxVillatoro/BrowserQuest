@@ -1,4 +1,6 @@
 
+var Entity = require('./entity');
+
 module.exports = Item = Entity.extend({
     init: function(id, kind, x, y) {
         this._super(id, "item", kind, x, y);
