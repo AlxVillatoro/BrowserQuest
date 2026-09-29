@@ -68,6 +68,7 @@ Todas se ejecutan con el servidor levantado (salvo `diag-world` y `audit-globals
 | `node tools/diag-protocol.js` | Conecta un bot y **vuelca todos los frames** que recibe. Distingue los dos caminos de envío del servidor (directo y por cola), que fallan de formas muy distintas. |
 | `node tools/audit-globals.js` | Detecta dependencias de globales implícitas en `server/js`. Ver *Deuda técnica*. |
 | `node tools/test-engine.js` | **Prueba del motor (43 comprobaciones).** Arranca el datapack entero y verifica el contrato completo: `config.js` con sus estructuras anidadas, `items.xml`, `vocations.xml`, la carga de módulos de contenido, las **firmas exactas** de cada tipo de evento, el **despacho** (un handler mueve a un jugador y crea items de verdad), el mapa cargado, la recarga en caliente y el aislamiento del estado. |
+| `node tools/test-simulation.js` | **Prueba de la simulación (48 comprobaciones).** Planificador de eventos (orden, desempate, cancelación, presupuesto), criaturas, movimiento con el **coste de paso real** y sus cooldowns, movimiento bloqueado, esquinas, teletransporte, **spawns y reaparición** tras la muerte, y la limpieza de tiles materializados. Usa un reloj inyectado: una prueba de cooldowns con `Date.now()` real es una carrera contra el reloj. |
 | `node tools/test-world.js` | **Prueba de la capa de mundo (45 comprobaciones).** Verifica el coste de paso con la **fórmula real de Tibia** y su cuantización a 50 ms, el apilado por tile (*stackpos*), las reglas de paso incluida la que impide **cortar esquinas en diagonal**, la visibilidad entre plantas (la superficie no ve el subsuelo) y que el validador de mapas informe de **todos** los errores con su coordenada, no del primero. |
 
 ---
@@ -89,11 +90,13 @@ El plan de migración y la justificación de cada decisión están en
 ```
 config.js        configuración del motor (un módulo que exporta un objeto)
 engine/          MOTOR NUEVO
-  core/            arranque, carga de config, logger
+  core/            arranque, carga de config, logger, planificador de eventos
   scripting/       registro de contenido, cargador, envoltorios y API Game
   data/            lectura de items.xml y data/XML/*.xml
   world/           el mundo
-    world.js         estado vivo: jugadores, items en el suelo
+    world.js         estado vivo, movimiento y bucle de simulación
+    creature.js      criaturas: jugadores y monstruos
+    spawner.js       aparición y reaparición de monstruos
     position.js      la coordenada canónica
     item.js          instancia de item, con sus banderas
     tile.js          el tile y su apilado (stackpos)

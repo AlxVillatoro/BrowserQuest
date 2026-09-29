@@ -108,9 +108,18 @@ class Tile {
         return false;
     }
 
+    /**
+     * Añade una criatura al tile.
+     *
+     * NO toca `creature.position` a propósito. El dueño de la posición de una
+     * criatura es el mundo, que es el único que conoce el mapa y las reglas de
+     * movimiento. Cuando el tile también la escribía, había dos sitios
+     * escribiéndola y el tile ganaba con un objeto plano sin métodos: eso rompía
+     * `position.copy()` en el teletransporte, y el fallo aparecía a tres capas de
+     * distancia de su causa.
+     */
     addCreature(creature) {
         if (creature && this.creatures.indexOf(creature) === -1) {
-            creature.position = { x: this.x, y: this.y, z: this.z };
             this.creatures.push(creature);
         }
         return this;
@@ -151,6 +160,21 @@ class Tile {
             stack.push(item);
         }
         return stack;
+    }
+
+    /** Sólo los items, sin las criaturas, de abajo arriba. */
+    getItems() {
+        const items = [];
+        if (this.ground) {
+            items.push(this.ground);
+        }
+        for (const item of this.downItems) {
+            items.push(item);
+        }
+        for (const item of this.topItems) {
+            items.push(item);
+        }
+        return items;
     }
 
     /**

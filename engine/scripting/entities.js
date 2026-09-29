@@ -1,69 +1,36 @@
 'use strict';
 
 /**
- * Entidades que se pasan a los scripts.
+ * Envoltorios que se pasan a los módulos de contenido.
  *
- * Son **envoltorios alrededor de un identificador**, no los objetos del mundo.
- * La diferencia no es cosmética: si un script recibiera el objeto real, podría
+ * Son **envoltorios alrededor de un identificador**, no los objetos del mundo. La
+ * diferencia no es cosmética: si un módulo recibiera el objeto real, podría
  * mutarlo sin pasar por ninguna regla —ponerse 999999 de vida, teletransportarse
- * fuera del mapa, vaciar el inventario de otro—. Con un envoltorio, todo lo que
- * hace un script pasa por esta API, y aquí se puede validar.
+ * fuera del mapa, vaciar el inventario de otro—. Con un envoltorio, todo pasa por
+ * esta API y aquí se puede validar.
  *
- * En la etapa anterior esto se hacía con metatablas de Lua y costaba entre 2x y
- * 4x. En JavaScript es una clase normal y no cuesta nada extra: el envoltorio y
- * la llamada directa son lo mismo. Ésa es la ventaja concreta de haber dejado
- * Lua, más allá de quitar un lenguaje del proyecto.
+ * La jerarquía copia la del motor: un jugador y un monstruo son las dos cosas una
+ * **criatura**, y por eso comparten base. Importa en la práctica: un handler de
+ * `onStepIn(creature, ...)` recibe indistintamente a cualquiera de los dos, y si
+ * fueran tipos sin relación habría que duplicar cada handler o comprobar el tipo
+ * a mano en todos.
  *
- * Las instancias se cachean por identificador, así que dos peticiones del mismo
- * jugador devuelven el mismo objeto y `a === b` funciona como se espera.
+ * Las instancias se cachean por identificador, así que dos peticiones de la misma
+ * criatura devuelven el mismo objeto y `a === b` funciona como se espera.
  */
 
-class Position {
-    constructor(x, y, z) {
-        this.x = Number(x) || 0;
-        this.y = Number(y) || 0;
-        this.z = Number(z) || 0;
-    }
+const { Position } = require('../world/position');
 
-    /**
-     * En Tibia las escaleras no son geometría: subir de planta es incrementar la
-     * coordenada Z. Por eso esto es aritmética y no una consulta al mapa.
-     */
-    moveUpstairs() {
-        this.z += 1;
-        return this;
-    }
-
-    moveDownstairs() {
-        this.z -= 1;
-        return this;
-    }
-
-    isZero() {
-        return this.x === 0 && this.y === 0 && this.z === 0;
-    }
-
-    equals(other) {
-        return !!other && this.x === other.x && this.y === other.y && this.z === other.z;
-    }
-
-    copy() {
-        return new Position(this.x, this.y, this.z);
-    }
-
-    toString() {
-        return '(' + this.x + ', ' + this.y + ', ' + this.z + ')';
-    }
-
-    toJSON() {
-        return { x: this.x, y: this.y, z: this.z };
-    }
-}
-
-class Player {
+/** Clase base: lo que comparten jugadores y monstruos. */
+class CreatureWrapper {
     constructor(world, id) {
         this.world = world;
         this.id = id;
+    }
+
+    /** La criatura real, o null si ya no existe. Uso interno del envoltorio. */
+    _creature() {
+        return this.world.getCreature(this.id);
     }
 
     getId() {
@@ -71,27 +38,65 @@ class Player {
     }
 
     getName() {
-        const player = this.world.getPlayer(this.id);
-        return player ? player.name : null;
+        const creature = this._creature();
+        return creature ? creature.name : null;
     }
 
-    /** Devuelve una COPIA: mutarla no mueve al jugador hasta llamar a teleportTo. */
+    /** Devuelve una COPIA: mutarla no mueve a nadie hasta llamar a teleportTo. */
     getPosition() {
-        const player = this.world.getPlayer(this.id);
-        if (!player) {
-            return null;
-        }
-        return new Position(player.position.x, player.position.y, player.position.z);
+        const creature = this._creature();
+        return creature
+            ? new Position(creature.position.x, creature.position.y, creature.position.z)
+            : null;
     }
 
     getHealth() {
-        const player = this.world.getPlayer(this.id);
-        return player ? player.health : 0;
+        const creature = this._creature();
+        return creature ? creature.health : 0;
     }
 
     getMaxHealth() {
-        const player = this.world.getPlayer(this.id);
-        return player ? player.maxHealth : 0;
+        const creature = this._creature();
+        return creature ? creature.maxHealth : 0;
+    }
+
+    getSpeed() {
+        const creature = this._creature();
+        return creature ? creature.speed : 0;
+    }
+
+    getDirection() {
+        const creature = this._creature();
+        return creature ? creature.direction : 0;
+    }
+
+    isPlayer() {
+        return false;
+    }
+
+    isMonster() {
+        return false;
+    }
+
+    isDead() {
+        const creature = this._creature();
+        return !creature || creature.isDead();
+    }
+
+    /** Decir algo en voz alta, para que lo oiga quien esté cerca. */
+    say(text) {
+        this.world.creatureSay(this.id, String(text));
+        return this;
+    }
+
+    toString() {
+        return this.constructor.name + '(' + this.id + ', ' + this.getName() + ')';
+    }
+}
+
+class PlayerWrapper extends CreatureWrapper {
+    isPlayer() {
+        return true;
     }
 
     getLevel() {
@@ -104,8 +109,10 @@ class Player {
         return player ? player.vocation : null;
     }
 
+    /** Mensaje privado, sólo para este jugador. */
     sendTextMessage(text) {
         this.world.sendTextMessage(this.id, String(text));
+        return this;
     }
 
     teleportTo(position) {
@@ -114,27 +121,54 @@ class Player {
         }
         return this.world.teleportPlayer(this.id, position.x, position.y, position.z);
     }
+}
 
-    toString() {
-        return 'Player(' + this.id + ', ' + this.getName() + ')';
+class MonsterWrapper extends CreatureWrapper {
+    isMonster() {
+        return true;
+    }
+
+    /** La definición del tipo, tal y como se registró en data/monsters. */
+    getMonsterType() {
+        const monster = this.world.getMonster(this.id);
+        return monster ? monster.monsterType : null;
+    }
+
+    getExperience() {
+        const monster = this.world.getMonster(this.id);
+        return monster ? monster.experience : 0;
+    }
+
+    getLoot() {
+        const monster = this.world.getMonster(this.id);
+        return monster ? monster.loot : [];
+    }
+
+    getTargetId() {
+        const monster = this.world.getMonster(this.id);
+        return monster && monster.target ? monster.target.id : null;
     }
 }
 
-class Item {
+class ItemWrapper {
     /**
-     * @param {number} uid identificador de la INSTANCIA, o 0 si no hay ninguna
+     * @param {number} instanceId identificador de la INSTANCIA, o 0
      * @param {number} [typeId] identificador del TIPO
      *
      * Los dos identificadores son distintos y hay eventos en los que el motor
-     * conoce sólo uno. En un movimiento, por ejemplo, el evento se registra por
-     * TIPO de item (el 2376), pero el item que hay en el suelo es una INSTANCIA
-     * con su propio uid. Sin poder declarar el tipo explícitamente, `getName()`
-     * devolvía null en esos handlers.
+     * conoce sólo uno. En un movimiento, el evento se registra por TIPO de item
+     * (el 2376), pero el item que hay en el suelo es una INSTANCIA con su uid.
+     * Sin poder declarar el tipo explícitamente, `getName()` devuelve null en esos
+     * handlers.
      */
-    constructor(world, uid, typeId) {
+    constructor(world, instanceId, typeId) {
         this.world = world;
-        this.uid = uid;
+        this.uid = instanceId;
         this.typeId = (typeId === undefined || typeId === null) ? null : typeId;
+    }
+
+    _item() {
+        return this.world.getItem(this.uid);
     }
 
     getUniqueId() {
@@ -145,13 +179,13 @@ class Item {
         if (this.typeId !== null) {
             return this.typeId;
         }
-        const item = this.world.getItem(this.uid);
-        return item ? item.itemId : 0;
+        const item = this._item();
+        return item ? item.typeId : 0;
     }
 
     getCount() {
-        const item = this.world.getItem(this.uid);
-        return item ? item.count : 0;
+        const item = this._item();
+        return item ? item.count : 1;
     }
 
     getName() {
@@ -160,6 +194,13 @@ class Item {
     }
 
     getAttribute(key) {
+        const item = this._item();
+        if (item) {
+            const own = item.getAttribute(key);
+            if (own !== undefined) {
+                return own;
+            }
+        }
         const definition = this.world.itemTypes.get(this.getId());
         if (!definition || !definition.attributes) {
             return undefined;
@@ -168,7 +209,7 @@ class Item {
     }
 
     remove() {
-        return this.world.items.delete(this.uid);
+        return this.world.removeItem(this.uid);
     }
 
     toString() {
@@ -179,43 +220,58 @@ class Item {
 /**
  * Crea envoltorios con caché por identificador.
  *
- * La caché es por motor, no global: dos motores en el mismo proceso (por ejemplo
- * dos tests, o dos mundos) no deben compartir envoltorios.
+ * La caché es por motor y no global: dos motores en el mismo proceso (por ejemplo
+ * dos pruebas) no deben compartir envoltorios.
  */
 class EntityFactory {
     constructor(world) {
         this.world = world;
-        this.players = new Map();
+        this.creatures = new Map();
         this.items = new Map();
     }
 
-    player(id) {
+    /**
+     * Devuelve el envoltorio que corresponde: jugador o monstruo.
+     *
+     * Es lo que permite que un handler de movimiento reciba al que de verdad pisó
+     * el tile, sin que el módulo de contenido tenga que averiguarlo.
+     */
+    creature(id) {
         const key = Number(id) || 0;
-        let existing = this.players.get(key);
+        let existing = this.creatures.get(key);
+
         if (!existing) {
-            existing = new Player(this.world, key);
-            this.players.set(key, existing);
+            existing = this.world.getPlayer(key)
+                ? new PlayerWrapper(this.world, key)
+                : new MonsterWrapper(this.world, key);
+            this.creatures.set(key, existing);
         }
+
         return existing;
     }
 
-    /**
-     * @param {number} uid identificador de instancia (0 si no hay)
-     * @param {number} [typeId] identificador de tipo, para cuando sólo se conoce ése
-     */
-    item(uid, typeId) {
-        const key = Number(uid) || 0;
+    /** Igual que `creature`, pero deja claro en el código que se espera uno. */
+    player(id) {
+        return this.creature(id);
+    }
+
+    monster(id) {
+        return this.creature(id);
+    }
+
+    item(instanceId, typeId) {
+        const key = Number(instanceId) || 0;
         const type = (typeId === undefined || typeId === null) ? null : Number(typeId);
 
-        // Si se declara el tipo explícitamente, la caché por uid no sirve: el
-        // mismo uid=0 se reutilizaría para todos los tipos.
+        // Si se declara el tipo explícitamente y no hay instancia, la caché por
+        // uid no sirve: el mismo uid=0 se reutilizaría para todos los tipos.
         if (type !== null && key === 0) {
-            return new Item(this.world, key, type);
+            return new ItemWrapper(this.world, key, type);
         }
 
         let existing = this.items.get(key);
         if (!existing) {
-            existing = new Item(this.world, key, type);
+            existing = new ItemWrapper(this.world, key, type);
             this.items.set(key, existing);
         }
         return existing;
@@ -226,4 +282,11 @@ class EntityFactory {
     }
 }
 
-module.exports = { Position, Player, Item, EntityFactory };
+module.exports = {
+    CreatureWrapper,
+    PlayerWrapper,
+    MonsterWrapper,
+    ItemWrapper,
+    EntityFactory,
+    Position
+};

@@ -161,11 +161,14 @@ function main() {
     section('6. Despacho: el handler actua sobre el mundo');
     // -----------------------------------------------------------------------
 
-    const player = world.createPlayer('Avillatoro', { x: 100, y: 100, z: 7 });
+    // El jugador se coloca DENTRO del mapa, en hierba transitable. No es un
+    // detalle: el teletransporte comprueba los limites, asi que un jugador fuera
+    // del mapa no se puede mover y la prueba mediria lo que no cree medir.
+    const player = world.createPlayer('Avillatoro', { x: 40, y: 40, z: 7 });
 
     // --- 6.1 Accion: onUse(player, item, fromPosition, target, toPosition, isHotkey)
     const useLever = engine.dispatchAction(1948, {
-        playerId: player.id, fromX: 100, fromY: 100, fromZ: 7
+        playerId: player.id, fromX: 40, fromY: 40, fromZ: 7
     });
 
     check('el onUse de la palanca se ejecuta',
@@ -177,7 +180,7 @@ function main() {
         JSON.stringify(world.teleports[0] ? world.teleports[0].to : null));
 
     check('el handler le envio un mensaje',
-        lastMessage(world, player.id) === 'Subes a (100, 100, 8).',
+        lastMessage(world, player.id) === 'Subes a (40, 40, 8).',
         JSON.stringify(lastMessage(world, player.id)));
 
     check('un item sin accion no se despacha',
@@ -188,7 +191,7 @@ function main() {
     check('la talkaction /pos se ejecuta y LEE el estado del mundo',
         pos.handled === true &&
         lastMessage(world, player.id) ===
-        'Posicion: (100, 100, 8)  Vida: 150/150  Nivel: 1  Vocacion: None',
+        'Posicion: (40, 40, 8)  Vida: 150/150  Nivel: 1  Vocacion: None',
         JSON.stringify(lastMessage(world, player.id)));
 
     const itemsBefore = world.items.size;
@@ -341,16 +344,33 @@ function main() {
     section('10. Aislamiento');
     // -----------------------------------------------------------------------
 
-    const snapshot = JSON.stringify(world.getPlayer(player.id));
+    // Se comparan los campos que importan, no el objeto entero. El grafo del mundo
+    // es CIRCULAR a proposito (criatura -> tile -> criaturas), para poder sacar a
+    // una criatura de su tile en O(1), asi que no es serializable tal cual. Es
+    // tambien la razon de que la persistencia tendra que serializar campo a campo
+    // en vez de volcar el estado.
+    const snapshot = (id) => {
+        const p = world.getPlayer(id);
+        return JSON.stringify({
+            name: p.name,
+            position: p.position.toString(),
+            health: p.health,
+            maxHealth: p.maxHealth,
+            level: p.level,
+            vocation: p.vocation
+        });
+    };
+
+    const beforeState = snapshot(player.id);
     engine.dispatchTalkAction('/pos', { playerId: player.id });
     check('despachar no muta el estado del mundo por si solo',
-        JSON.stringify(world.getPlayer(player.id)) === snapshot);
+        snapshot(player.id) === beforeState);
 
     // El envoltorio devuelve una copia: mutar la posicion no mueve al jugador.
     const position = engine.registry.entities.player(player.id).getPosition();
     position.x = 9999;
     check('mutar una posicion obtenida no mueve al jugador',
-        world.getPlayer(player.id).position.x === 100,
+        world.getPlayer(player.id).position.x === 40,
         'la posicion se copia, no se comparte');
 
     engine.shutdown();

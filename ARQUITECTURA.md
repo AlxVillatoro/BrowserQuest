@@ -108,9 +108,13 @@ falta tocar el motor para añadir un hechizo, la arquitectura está mal.
 | Reglas de paso y esquinas | hecho y probado |
 | Visibilidad entre plantas | hecho y probado |
 | Validación de mapas | hecho y probado |
-| Criaturas y movimiento en el mundo | pendiente |
-| Spawns instanciados desde el mapa | pendiente (los datos ya se cargan) |
+| Criaturas (jugadores y monstruos) | hecho y probado |
+| Movimiento por tiles, con cooldown | hecho y probado |
+| Planificador de eventos temporizados | hecho y probado |
+| Spawns y reaparición | hecho y probado |
+| Limpieza de tiles materializados | hecho y probado |
 | Combate | pendiente |
+| IA de monstruos | pendiente |
 | Protocolo y red | pendiente |
 | Persistencia | pendiente |
 | Importadores OTBM/OTB/DAT/SPR | pendiente |
@@ -457,12 +461,15 @@ servido, pruebas end-to-end y de diagnóstico en verde.
 registro y despacho de eventos, envoltorios de entidad, API `Game`, monstruos como
 módulos y recarga en caliente. Verificado por `tools/test-engine.js`.
 
-**Fase 3 — Mundo.** *En curso, la mayor parte hecha.* Formato interno de mapa por
-chunks con plantas y almacenamiento disperso, tiles con apilado (*stackpos*),
-coste de paso con la fórmula real de Tibia, reglas de paso incluidas las esquinas,
-visibilidad entre plantas y un validador de mapas que informa de todos los errores
-a la vez. Falta instanciar criaturas desde los spawns y el movimiento en el mundo.
-El importador de OTBM entra aquí.
+**Fase 3 — Mundo.** *Hecha.* Formato interno de mapa por chunks con plantas y
+almacenamiento disperso, tiles con apilado (*stackpos*), coste de paso con la
+fórmula real de Tibia, reglas de paso incluidas las esquinas, visibilidad entre
+plantas, validador de mapas, criaturas, movimiento con cooldown, planificador de
+eventos, spawns con reaparición y limpieza de los tiles que el tránsito materializa.
+El importador de OTBM sigue pendiente.
+
+**Fase 4 — Combate e IA.** Daño, muerte, botín, y monstruos que persiguen y
+atacan. Es lo que convierte el mundo en un juego.
 
 **Fase 4 — Red y protocolo.** Servidor autoritativo. Aquí es donde el cliente
 pasa a ser un terminal: hoy el cliente heredado es **cliente-autoritativo para el

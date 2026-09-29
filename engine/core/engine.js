@@ -31,6 +31,8 @@ const { ScriptRegistry } = require('../scripting/registry');
 const { loadContent } = require('../scripting/loader');
 const { createGame, installGame } = require('../scripting/game');
 const MapLoader = require('../world/loader');
+const { Scheduler } = require('./scheduler');
+const { Spawner } = require('../world/spawner');
 
 /**
  * @param {Object} [options]
@@ -55,8 +57,17 @@ function createEngine(options) {
         ? loaded.declaredKeys + ' claves declaradas en ' + path.basename(loaded.source)
         : 'valores por defecto'));
 
-    // --- 2. Definiciones XML ---------------------------------------------
-    const world = new World({ logger: log });
+    // --- 2. Planificador y mundo ------------------------------------------
+    // El planificador se crea antes que el mundo porque el mundo lo usa para todo
+    // lo que ocurre "dentro de un rato": terminar un paso, hacer reaparecer un
+    // monstruo, regenerar salud.
+    const scheduler = new Scheduler({ logger: log });
+
+    const world = new World({
+        logger: log,
+        scheduler: scheduler,
+        tickIntervalMs: config.tickIntervalMs
+    });
 
     const itemsPath = resolve(config.itemsXml);
     if (fs.existsSync(itemsPath)) {
@@ -172,6 +183,49 @@ function createEngine(options) {
         log.info('mapa: ' + mapStats.waypoints + ' waypoints, ' + mapStats.spawns + ' spawns');
     }
 
+    // --- 7. Mundo y contenido: los enganches ------------------------------
+    // El mundo NO conoce el registro de contenido: sólo avisa de lo que pasa, y
+    // aquí se decide si hay algún módulo interesado. Sin esta separación el mundo
+    // tendría que saber qué es un `onStepIn`, y el motor dejaría de ser
+    // independiente del datapack.
+    //
+    // Sobre la búsqueda: en TFS la precedencia es uniqueid -> actionid -> itemid.
+    // Aquí sólo se resuelve por itemid, porque el mapa todavía no declara action
+    // ids. Cuando los declare, esta es la función que debe implementar la cascada.
+    world.on('onStepIn', (creature, tile, fromPosition) => {
+        tile.getItems().forEach((item) => {
+            registry.dispatchMovement('stepin', item.typeId, {
+                creatureId: creature.id,
+                itemUid: item.instanceId || 0,
+                x: tile.x, y: tile.y, z: tile.z,
+                fromX: fromPosition.x, fromY: fromPosition.y, fromZ: fromPosition.z
+            });
+        });
+    });
+
+    world.on('onStepOut', (creature, tile, toPosition) => {
+        tile.getItems().forEach((item) => {
+            registry.dispatchMovement('stepout', item.typeId, {
+                creatureId: creature.id,
+                itemUid: item.instanceId || 0,
+                x: toPosition.x, y: toPosition.y, z: toPosition.z,
+                fromX: tile.x, fromY: tile.y, fromZ: tile.z
+            });
+        });
+    });
+
+    // --- 8. Spawns --------------------------------------------------------
+    // El gestor se suscribe por su cuenta al evento de muerte: es quien lo
+    // necesita, así que no depende de que el motor se acuerde de cablearlo.
+    const spawner = new Spawner({ world: world, scheduler: scheduler, logger: log });
+
+    let spawnStats = { spawns: 0, monsters: 0 };
+    if (world.map) {
+        spawnStats = spawner.loadFromMap(world.map);
+        log.info('spawns: ' + spawnStats.spawns + ' puntos de aparicion, ' +
+            spawnStats.monsters + ' monstruos vivos');
+    }
+
     const stats = {
         declaredConfigKeys: loaded.declaredKeys,
         items: world.itemTypes.size,
@@ -183,6 +237,8 @@ function createEngine(options) {
         movements: registry.movements.size,
         talkActions: registry.talkActions.length,
         monsterTypes: world.monsterTypes.size,
+        monsters: world.monsters.size,
+        spawns: spawnStats.spawns,
         map: mapStats
     };
 
@@ -197,6 +253,8 @@ function createEngine(options) {
         world: world,
         registry: registry,
         game: game,
+        scheduler: scheduler,
+        spawner: spawner,
         vocations: vocations,
         stats: stats,
 
@@ -212,9 +270,28 @@ function createEngine(options) {
             return registry.dispatchTalkAction(words, context);
         },
 
+        /**
+         * Arranca el bucle de simulación.
+         *
+         * Está separado del arranque a propósito: las pruebas necesitan avanzar el
+         * mundo a mano (`world.tick()`) para ser deterministas, y arrancar un
+         * temporizador de fondo dentro de `createEngine` lo haría imposible.
+         */
+        start() {
+            return world.start();
+        },
+
+        stop() {
+            return world.stop();
+        },
+
         reloadContent: reloadContent,
 
         shutdown() {
+            world.stop();
+            if (scheduler) {
+                scheduler.clear();
+            }
             // Se restaura el `Game` anterior para no pisar a otro motor que
             // conviva en el mismo proceso (por ejemplo, en las pruebas).
             restoreGame();

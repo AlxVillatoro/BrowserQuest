@@ -310,16 +310,70 @@ class GameMap {
     // Recorrido e información
     // -----------------------------------------------------------------------
 
-    /** Recorre sólo los tiles explícitos. Los demás son suelo por defecto. */
-    forEachTile(callback) {
+    /**
+     * Devuelve al estado disperso los tiles que quedaron vacíos.
+     *
+     * Es necesario porque crear una criatura materializa su tile: un jugador que
+     * recorre medio mapa deja cientos de tiles detrás, vacíos e idénticos al suelo
+     * por defecto. Sin esta limpieza el consumo crecería con el TIEMPO DE JUEGO en
+     * vez de con el CONTENIDO del mundo, que es justo lo que el almacenamiento
+     * disperso venía a evitar.
+     *
+     * Un tile sólo se descarta si no le queda nada propio: ni criaturas, ni items,
+     * ni banderas, ni casa, y su suelo es el de por defecto de su planta. Cualquier
+     * cosa que lo distinga lo mantiene vivo.
+     *
+     * @returns {number} cuántos tiles se descartaron
+     */
+    compact() {
+        let removed = 0;
+
         this.chunks.forEach((chunk, key) => {
-            const parts = key.split('_');
-            const z = Number(parts[2]);
+            let alive = 0;
 
             for (let index = 0; index < chunk.length; index += 1) {
                 const tile = chunk[index];
+                if (!tile) {
+                    continue;
+                }
+
+                if (tile.creatures.length > 0 ||
+                    tile.downItems.length > 0 ||
+                    tile.topItems.length > 0 ||
+                    tile.flags !== 0 ||
+                    tile.houseId !== 0) {
+                    alive += 1;
+                    continue;
+                }
+
+                const defaultGround = this.defaultGround.get(tile.z) || this.fallbackGround;
+                if (defaultGround && tile.ground &&
+                    tile.ground.typeId === defaultGround.typeId) {
+                    chunk[index] = null;
+                    this.explicitTiles -= 1;
+                    removed += 1;
+                } else {
+                    alive += 1;
+                }
+            }
+
+            // Un chunk sin nada vivo se elimina entero, para que la tabla de
+            // chunks tampoco crezca.
+            if (alive === 0) {
+                this.chunks.delete(key);
+            }
+        });
+
+        return removed;
+    }
+
+    /** Recorre sólo los tiles explícitos. Los demás son suelo por defecto. */
+    forEachTile(callback) {
+        this.chunks.forEach((chunk) => {
+            for (let index = 0; index < chunk.length; index += 1) {
+                const tile = chunk[index];
                 if (tile) {
-                    callback(tile, z);
+                    callback(tile, tile.z);
                 }
             }
         });
