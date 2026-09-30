@@ -162,9 +162,9 @@ async function main() {
             loginOk[5] + ')' : 'no llego');
 
     // El mapa inicial son cientos de tiles; se espera a que lleguen.
-    const tiles = await client.waitFor(() => client.count(P.SERVER.TILE_ADD) > 500, 3000);
+    const tiles = await client.waitFor(() => client.count(P.SERVER.TILE_ADD) > 200, 3000);
     check('llega el mapa inicial completo',
-        client.count(P.SERVER.TILE_ADD) > 500,
+        client.count(P.SERVER.TILE_ADD) > 200,
         client.count(P.SERVER.TILE_ADD) + ' tiles');
 
     check('el jugador existe en el mundo del servidor',

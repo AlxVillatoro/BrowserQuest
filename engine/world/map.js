@@ -128,7 +128,7 @@ class GameMap {
 
             // Si la celda no declara suelo, hereda el de su planta. Así el loader
             // no tiene que repetir el suelo en cada tile que menciona.
-            const ground = this.defaultGround.get(z) || this.fallbackGround;
+            const ground = this.groundFor(z);
             if (ground) {
                 chunk[index].setGround(this._copyGround(ground, x, y, z));
             }
@@ -168,6 +168,32 @@ class GameMap {
      * celda está. Clonarlo en cada consulta costaría una asignación por celda y
      * por frame sin dar nada a cambio.
      */
+    /**
+     * El suelo por defecto de una planta.
+     *
+     * EL `fallbackGround` NO SE APLICA POR ENCIMA DE LA SUPERFICIE, y esa restriccion es la
+     * que faltaba. En el modelo de Tibia la superficie (z=7) es lo mas alto del mundo: por
+     * encima no hay suelo, hay aire. Aplicarlo a todas las plantas creaba plantas FANTASMA de
+     * hierba en z=0..6, y como el cliente dibuja las plantas de mas arriba DESPUES -estan mas
+     * cerca de la vista y tapan lo que hay debajo, que es lo correcto-, esas plantas
+     * inventadas tapaban al jugador y a los monstruos.
+     *
+     * El sintoma era un mundo entero de hierba sin una sola criatura, y con "plantas 7/6/5"
+     * en el diagnostico: tres plantas donde solo hay una.
+     *
+     * Un mapa que quiera suelo por encima de la superficie -islas flotantes, torres- lo
+     * declara en `defaultGround`, que sigue mandando sobre esto.
+     */
+    groundFor(z) {
+        const declared = this.defaultGround.get(z);
+
+        if (declared) {
+            return declared;
+        }
+
+        return z >= SURFACE_MAX_Z ? this.fallbackGround : null;
+    }
+
     getGround(x, y, z) {
         if (!this.inBounds(x, y, z)) {
             return null;
@@ -177,7 +203,7 @@ class GameMap {
         if (tile && tile.ground) {
             return tile.ground;
         }
-        const fallback = this.defaultGround.get(z) || this.fallbackGround;
+        const fallback = this.groundFor(z);
         return fallback || null;
     }
 
@@ -403,7 +429,7 @@ class GameMap {
                     continue;
                 }
 
-                const defaultGround = this.defaultGround.get(tile.z) || this.fallbackGround;
+                const defaultGround = this.groundFor(tile.z);
                 if (defaultGround && tile.ground &&
                     tile.ground.typeId === defaultGround.typeId) {
                     chunk[index] = null;

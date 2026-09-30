@@ -236,18 +236,32 @@ function main() {
     // de visibilidad de juego, que desde la superficie no deja ver el subsuelo.
     const floorsSent = new Set();
     login.filter((m) => m[0] === P.SERVER.TILE_ADD).forEach((m) => floorsSent.add(m[3]));
-    check('se envian TRES plantas, no ocho',
-        floorsSent.size === 3 && floorsSent.has(5) && floorsSent.has(6) && floorsSent.has(7),
+    /*
+     * UNA SOLA PLANTA, y no tres.
+     *
+     * Esta comprobacion esperaba tres -la 7, la 6 y la 5- y pasaba porque el `fallbackGround`
+     * del mapa ponia hierba en TODAS las plantas, incluidas las de encima de la superficie.
+     * Esas plantas no existen: en el modelo de Tibia la superficie es lo mas alto del mundo.
+     *
+     * Y no era una cuestion cosmetica. El cliente dibuja las plantas de mas arriba DESPUES,
+     * porque estan mas cerca de la vista y tapan lo de debajo, que es lo correcto: esas dos
+     * plantas inventadas tapaban al jugador y a los tres monstruos. El sintoma era un mundo
+     * entero de hierba sin una sola criatura.
+     *
+     * La prueba estaba afirmando el fallo, que es la peor forma de tener una prueba en verde.
+     */
+    check('se envia SOLO la planta de la superficie',
+        floorsSent.size === 1 && floorsSent.has(7),
         'plantas ' + Array.from(floorsSent).sort().join(', ') +
-        ': el rango de dibujo, no todo lo que la regla de juego permite');
+        ': por encima de la superficie no hay suelo, y por debajo la regla no deja ver');
 
     check('la superficie NO recibe el subsuelo',
         !floorsSent.has(8) && !floorsSent.has(9),
         'seria una fuga de informacion, no una optimizacion');
 
-    check('cada planta aporta su rectangulo completo',
-        tiles === 19 * 15 * 3,
-        '19x15 tiles por planta, sin excluir el que pisa el jugador: ' + tiles);
+    check('la planta aporta su rectangulo completo',
+        tiles === 19 * 15,
+        '19x15 tiles, sin excluir el que pisa el jugador: ' + tiles);
 
     // Se comprueba que el jugador ESTA entre las criaturas, no que sea la unica.
     //

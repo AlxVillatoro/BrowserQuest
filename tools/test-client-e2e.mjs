@@ -138,7 +138,7 @@ async function main() {
     await client.open();
     client.send([P.CLIENT.ENTER_WORLD, 'PorCliente']);
 
-    const gotWorld = await client.waitUntil((world) => world.tiles.size > 500, 4000);
+    const gotWorld = await client.waitUntil((world) => world.tiles.size > 200, 4000);
 
     check('el cliente recibe y aplica el mapa',
         gotWorld, client.world.tiles.size + ' tiles');
