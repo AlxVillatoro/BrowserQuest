@@ -77,7 +77,26 @@ export class ClientWorld {
         const opts = options || {};
 
         /** Reloj inyectable, para poder probar la interpolación sin esperar. */
-        this.now = opts.now || (() => Date.now());
+        /*
+         * UN SOLO RELOJ PARA TODO EL CLIENTE, y esto faltaba.
+         *
+         * Aquí ponía `() => Date.now()`, y el bucle de dibujo llama a `update(time)` con el
+         * reloj de `requestAnimationFrame`, que es el de `performance.now()`: milisegundos
+         * desde que se abrió la página. Son dos relojes distintos y no comparables.
+         *
+         * La consecuencia no era un desfase pequeño, era que NO SE PODÍA ANDAR. Un movimiento
+         * se sellaba con `Date.now()` -unos 1,75 billones- y se medía con el del fotograma
+         * -unos diez mil-, así que `elapsed = ahora - empezó` salía enormemente NEGATIVO, el
+         * paso se quedaba en su casilla de salida para siempre y `moving` no se limpiaba
+         * nunca. Como `_tryWalk` no envía nada mientras haya un movimiento en curso, el
+         * jugador se quedaba clavado en el sitio.
+         *
+         * `performance.now()` existe también en Node, así que las pruebas usan el mismo
+         * reloj; y quien necesite otro puede seguir inyectándolo por `opts.now`.
+         */
+        this.now = opts.now || (typeof performance !== 'undefined' && performance.now
+            ? () => performance.now()
+            : () => Date.now());
 
         /** tiles: "x,y,z" -> { ground, items, downCount, z } */
         this.tiles = new Map();
