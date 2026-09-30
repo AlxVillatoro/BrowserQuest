@@ -339,6 +339,21 @@ module.exports = World = cls.Class.extend({
         if(entity.type === "mob") {
             this.clearMobAggroLink(entity);
             this.clearMobHateLinks(entity);
+        } else {
+            /*
+             * Y SI LO QUE SE VA NO ES UN MONSTRUO, hay que quitar a quien se va de las listas
+             * de odio de TODOS los monstruos.
+             *
+             * Esto no estaba, y es la causa del error del registro. La limpieza de arriba sólo
+             * mira el caso de que se vaya un monstruo; cuando se iba un JUGADOR, cada monstruo
+             * que le tenía odio se quedaba con su identificador apuntando a alguien que ya no
+             * existe. La siguiente vez que uno de ellos buscaba objetivo, la búsqueda no lo
+             * encontraba y soltaba "Unknown entity : 1121".
+             *
+             * Es un fallo que no rompe nada y por eso dura: el monstruo simplemente ignora al
+             * objetivo que no encuentra... después de escribir un error cada vez.
+             */
+            this.forgetEntityEverywhere(entity);
         }
         
         entity.destroy();
@@ -414,12 +429,38 @@ module.exports = World = cls.Class.extend({
     },
     
     /**
+     * Quita a una criatura de las listas de odio de todos los monstruos.
+     *
+     * Se usa cuando alguien se va del mundo. Recorre TODOS los monstruos en vez de mantener un
+     * índice inverso de quién odia a quién: con los monstruos que caben en un mundo esto es
+     * barato, y un índice inverso es una segunda estructura que puede desincronizarse de la
+     * primera y volver a dejar identificadores huérfanos, que es justo lo que se está
+     * arreglando.
+     */
+    forgetEntityEverywhere: function(entity) {
+        var self = this;
+
+        _.each(this.mobs, function(mob) {
+            // El enlace de agresión se rompe ANTES de borrar el objetivo, porque
+            // `clearMobAggroLink` lo mira para saber a quién avisar.
+            if(mob.target === entity.id) {
+                self.clearMobAggroLink(mob);
+                mob.target = null;
+            }
+
+            mob.forgetPlayer(entity.id, 1);
+        });
+    },
+
+    /**
      * The mob will no longer be registered as an attacker of its current target.
      */
     clearMobAggroLink: function(mob) {
         var player = null;
         if(mob.target) {
-            player = this.getEntityById(mob.target);
+            // Búsqueda silenciosa: que el objetivo ya no esté es un caso contemplado, no un
+            // fallo. Ver `findEntityById`.
+            player = this.findEntityById(mob.target);
             if(player) {
                 player.removeAttacker(mob);
             }
@@ -430,7 +471,7 @@ module.exports = World = cls.Class.extend({
         var self = this;
         if(mob) {
             _.each(mob.hatelist, function(obj) {
-                var player = self.getEntityById(obj.id);
+                var player = self.findEntityById(obj.id);
                 if(player) {
                     player.removeHater(mob);
                 }
@@ -477,8 +518,22 @@ module.exports = World = cls.Class.extend({
     },
     
     chooseMobTarget: function(mob, hateRank) {
-        var player = this.getEntityById(mob.getHatedPlayerId(hateRank));
-        
+        var hatedId = mob.getHatedPlayerId(hateRank);
+        var player = this.findEntityById(hatedId);
+
+        /*
+         * Si odiaba a alguien que ya no está, se olvida AQUÍ MISMO.
+         *
+         * Es el segundo cinturón: el arreglo de `removeEntity` debería haberlo quitado ya, y
+         * esto cubre los caminos por los que alguien desaparece sin pasar por ahí —morir,
+         * teletransportarse, cambiar de mundo—. Sin esta limpieza, una entrada huérfana se
+         * queda en la lista y vuelve a fallar en cada tic, para siempre.
+         */
+        if(hatedId !== undefined && !player) {
+            mob.forgetPlayer(hatedId, 1);
+            return;
+        }
+
         // If the mob is not already attacking the player, create an attack link between them.
         if(player && !(mob.id in player.attackers)) {
             this.clearMobAggroLink(mob);
@@ -501,6 +556,24 @@ module.exports = World = cls.Class.extend({
         } else {
             log.error("Unknown entity : " + id);
         }
+    },
+
+    /**
+     * Busca una entidad SIN avisar si no está.
+     *
+     * Existe porque hay dos preguntas distintas y hasta ahora se usaba la misma para las dos:
+     *
+     *   - "esto debería existir" -> getEntityById, y que grite si no está, porque es un fallo.
+     *   - "puede que ya no esté, y lo tengo contemplado" -> ésta.
+     *
+     * La limpieza de las listas de odio es del segundo tipo: cuando un jugador se va, sus
+     * entradas se quitan y hay que comprobar si la entidad sigue ahí. Con la búsqueda que
+     * grita, esa comprobación normal escribía un error en el registro, y el registro se
+     * llenaba de "Unknown entity" por casos que estaban bien resueltos. Un registro con
+     * errores que no son errores deja de mirarse.
+     */
+    findEntityById: function(id) {
+        return this.entities[id];
     },
     
     getPlayerCount: function() {
