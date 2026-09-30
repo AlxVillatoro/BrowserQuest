@@ -69,6 +69,22 @@ function main() {
     const world = engine.world;
     const config = engine.config;
 
+    // Recuento del contenido AL ARRANCAR, antes de que esta prueba registre nada.
+    //
+    // Se guarda en vez de escribir numeros a mano porque un `=== 8` o un `=== 11` hay que
+    // tocarlo cada vez que alguien anade un monstruo, y mientras tanto no protege de nada:
+    // el dia que un modulo dejara de cargarse, el numero bostezaria y nadie lo miraria.
+    // Lo que de verdad hay que comprobar es que el contenido CARGA y que lo concreto que
+    // se comprobaba sigue ahi, y eso lo hacen las comprobaciones de abajo con nombres.
+    // Este recuento sirve para una sola cosa: exigir despues de recargar que el registro
+    // haya vuelto EXACTAMENTE a lo que habia al arrancar.
+    const contenidoAlArrancar = {
+        definitions: engine.stats.contentDefinitions,
+        files: engine.stats.contentFiles,
+        acciones: engine.registry.actions.size,
+        comandos: engine.registry.talkActions.length
+    };
+
     // -----------------------------------------------------------------------
     section('1. config.js');
     // -----------------------------------------------------------------------
@@ -94,8 +110,13 @@ function main() {
     section('2. items.xml');
     // -----------------------------------------------------------------------
 
-    check('se cargan los items', world.itemTypes.size === 18,
-        world.itemTypes.size + ' items (13 explicitos + 5 del rango 1950-1954)');
+    // El tope es el numero que habia cuando se escribio esta prueba (13 items explicitos
+    // mas los 5 del rango 1950-1954); el archivo puede CRECER, lo que no puede es encoger.
+    // Un `=== 18` obligaba a retocar la prueba cada vez que se anadia un objeto, y a cambio
+    // no detectaba el fallo que importa: que un `<item>` dejara de leerse.
+    check('se cargan los items', world.itemTypes.size >= 18,
+        world.itemTypes.size + ' items cargados; el archivo declara ' +
+        (world.itemTypes.size - 5) + ' bloques <item>, uno de ellos de rango');
 
     const sword = world.itemTypes.get(2400);
     check('nombre y atributos de un item',
@@ -123,18 +144,37 @@ function main() {
     section('4. Carga de contenido');
     // -----------------------------------------------------------------------
 
+    // El tope es lo que habia al escribir la prueba (8 modulos, 11 definiciones). El
+    // datapack crece a proposito, asi que se exige "al menos" y ademas que lo concreto que
+    // esta comprobacion protegia siga en pie: que el registro conozca el monstruo del
+    // datapack y los comandos que vienen en `commands.js`. Un numero exacto obligaba a
+    // tocar la prueba por cada monstruo anadido y no avisaba de nada mas.
     check('los modulos se cargan sin paso manual de registro',
-        engine.stats.contentFiles === 8 && engine.stats.contentDefinitions === 11,
-        engine.stats.contentFiles + ' modulos, ' + engine.stats.contentDefinitions + ' definiciones');
+        engine.stats.contentFiles >= 8 && engine.stats.contentDefinitions >= 11 &&
+        world.monsterTypes.has('Rat') &&
+        engine.registry.talkActions.some((t) => t.words === '/pos') &&
+        engine.registry.talkActions.some((t) => t.words === '/item'),
+        engine.stats.contentFiles + ' modulos, ' + engine.stats.contentDefinitions +
+        ' definiciones; el registro conoce el Rat y los comandos /pos y /item');
 
+    // Uno por tipo: el `movement` y el `event` existian de antes, y el `npc` es nuevo.
     check('definiciones por tipo',
-        engine.stats.byKind.action === 1 && engine.stats.byKind.movement === 2 &&
-        engine.stats.byKind.talkaction === 4 && engine.stats.byKind.monster === 1 &&
-        engine.stats.byKind.event === 1,
+        ['action', 'movement', 'talkaction', 'monster', 'npc', 'event']
+            .every((kind) => (engine.stats.byKind[kind] || 0) >= 1),
         JSON.stringify(engine.stats.byKind));
 
+    // Lo que mide esta comprobacion es que UN fichero pueda declarar VARIOS registros, y
+    // que los cuatro comandos que viven juntos en `commands.js` lleguen todos. El "cuatro
+    // en total" era un efecto colateral de cuantos comandos hubiera; el numero que importa
+    // es el de registros que aporta ESE fichero.
+    const desdeCommands = engine.registry.talkActions
+        .filter((t) => t.script === 'data/scripts/talkactions/commands.js')
+        .map((t) => t.words);
+
     check('un modulo puede declarar varios registros con un array',
-        engine.stats.talkActions === 4, '/pos, /item, /outfit y /i, los cuatro en commands.js');
+        desdeCommands.length >= 4 &&
+        ['/pos', '/item', '/outfit', '/i'].every((words) => desdeCommands.indexOf(words) !== -1),
+        desdeCommands.join(', ') + ', los cuatro en commands.js');
 
     // --- Aspectos ---
 
@@ -377,6 +417,7 @@ function main() {
 
     const before = {
         definitions: engine.stats.contentDefinitions,
+        files: engine.stats.contentFiles,
         actions: engine.registry.actions.size,
         talkActions: engine.registry.talkActions.length
     };
@@ -384,12 +425,26 @@ function main() {
     engine.reloadContent();
 
     check('recargar no DUPLICA registros',
-        engine.stats.contentDefinitions === before.definitions,
-        before.definitions + ' definiciones antes y despues');
+        engine.stats.contentDefinitions === before.definitions &&
+        engine.stats.contentFiles === before.files,
+        before.definitions + ' definiciones en ' + before.files +
+        ' modulos antes y despues');
 
+    // LO QUE SE COMPRUEBA AQUI ES QUE LAS DEFINICIONES DE PRUEBA DESAPAREZCAN, no que el
+    // registro tenga un numero concreto de entradas. Antes decia `actions.size === 1`,
+    // que era el recuento de `data/scripts/actions` cuando se escribio: cualquier accion
+    // nueva en el datapack ponia la prueba en rojo aunque la recarga fuera perfecta.
+    // Se compara contra lo que habia AL ARRANCAR, que es lo que significa "estado de
+    // arranque", y ademas se exige que ninguna entrada cargada venga de la prueba.
     check('recargar devuelve el contenido a su estado de arranque',
-        engine.registry.actions.size === 1 && engine.registry.talkActions.length === 4,
-        'las definiciones de prueba (que no son ficheros) desaparecen, como en un /reload real');
+        engine.registry.actions.size === contenidoAlArrancar.acciones &&
+        engine.registry.talkActions.length === contenidoAlArrancar.comandos &&
+        engine.stats.contentDefinitions === contenidoAlArrancar.definitions &&
+        engine.registry.talkActions.every((t) => t.script !== 'prueba') &&
+        !Array.from(engine.registry.actions.values()).some((a) => a.script === 'prueba'),
+        'el registro vuelve a las ' + contenidoAlArrancar.definitions + ' definiciones del ' +
+        'arranque y las definiciones de prueba (que no son ficheros) desaparecen, como en ' +
+        'un /reload real');
 
     check('recargar vuelve a dejar el contenido funcional',
         engine.dispatchAction(1948, { playerId: player.id }).handled === true);
@@ -486,9 +541,17 @@ function main() {
     section('11. Los NPC');
     // -----------------------------------------------------------------------
 
+    // Los dos NPC del datapack de ejemplo tienen que estar, cada uno con su dialogo y
+    // colocado en el mapa. El `=== 2` de antes era el recuento del dia en que se escribio,
+    // y con ocho dialogos y dos NPC colocados ponia la prueba en rojo sin que nada
+    // estuviera roto: lo que hay que exigir es que ESTOS DOS sigan enteros, que es lo que
+    // comprobaba de verdad.
     check('se cargan las definiciones y los dialogos',
-        engine.stats.npcTypes === 2 && world.npcs.size === 2,
-        engine.stats.npcTypes + ' dialogos, ' + world.npcs.size + ' NPC colocados');
+        world.npcs.has('Guia') && world.npcs.has('Herrero') &&
+        world.npcTypes.has('Guia') && world.npcTypes.has('Herrero') &&
+        engine.stats.npcTypes >= 2 && world.npcs.size >= 2,
+        engine.stats.npcTypes + ' dialogos, ' + world.npcs.size +
+        ' NPC colocados, y el Guia y el Herrero estan los dos');
 
     {
         const guia = world.getNpc('Guia');

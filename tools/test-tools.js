@@ -183,8 +183,13 @@ async function main() {
         const xml = fs.readFileSync(workspace.itemsFile, 'utf8');
         const items = ItemsFile.readItems(xml);
 
+        // El tope es el numero de bloques <item> que habia cuando se escribio la prueba.
+        // Un `<item>` nuevo en el datapack no es un fallo del lector, asi que el numero
+        // exacto solo servia para poner la prueba en rojo cada vez que se anadia un objeto.
+        // Lo que hay que seguir cazando es lo contrario, que el lector se deje bloques por
+        // el camino, y eso se comprueba abajo con un item concreto y con el rango.
         check('se leen todos los items del archivo',
-            items.length === 14,
+            items.length >= 14,
             items.length + ' bloques <item>, ' + itemTypes.size + ' tipos resueltos');
 
         const rata = items.find((item) => item.id === 111);

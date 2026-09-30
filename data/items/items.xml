@@ -109,4 +109,316 @@
 	<!-- Rango de ids: la misma definición para toda una familia de sprites. -->
 	<item fromid="1950" toid="1954" name="footprint" />
 
+	<!-- =====================================================================
+	     OBJETOS NUEVOS: armas, proteccion, contenedor, consumibles y adornos.
+
+	     DE DONDE SALEN LOS IDS. De Tibia solo hay UN id de esta zona copiado de
+	     verdad en este archivo: el 2400 de la espada magica, que ya estaba. Los
+	     ids 2401..2420 son HUECOS LIBRES de la zona 2400-2600, elegidos para no
+	     repetir ninguno de los que ya existian (102, 103, 104, 105, 111, 112,
+	     113, 1948, 1387, 3031, 2160, 2400, 2376 y el rango 1950-1954). NO se
+	     presentan como los ids que estos objetos tienen en Tibia: no se han
+	     podido contrastar, y un id inventado que se presente como bueno es el
+	     dato mas caro de inventar de todos, porque es el que rompe un mapa.
+	     Cuando llegue el importador de `items.otb` (ver la cabecera), el
+	     importador traera los ids de verdad y este archivo volvera a
+	     COMPLETARLOS, que es su papel.
+
+	     DE DONDE SALEN LOS NUMEROS. Los pesos y los valores de combate de estos
+	     objetos son VALORES RAZONABLES DE ESTE MUNDO, elegidos para cuadrar con
+	     la escala que ya estaba: una moneda pesa 10 (0,10 oz), una espada 4200
+	     (42,00 oz) y un ataque fuerte es 48. NO son cifras verificadas de Tibia,
+	     y por eso no se escriben como si lo fueran. El dia que se puedan
+	     contrastar con el archivo de verdad, se corrigen aqui y no hay nada mas
+	     que tocar.
+
+	     DE DONDE SALEN LOS NOMBRES. Los nombres van en INGLES porque son los de
+	     Tibia y son la clave canonica con la que el motor los reconoce: el
+	     mercader acepta "espada" y "magic sword" justamente porque el canonico es
+	     el segundo, que es el de `items.xml` (mira `buyFromNpc` y su comentario
+	     en `engine/world/world.js`). Traducirlos aqui romperia esa
+	     correspondencia. Lo que va en espanol es todo lo demas: comentarios y
+	     mensajes.
+
+	     POR QUE EL PESO Y EL `slotType` SON LO PRIMERO. El motor usa `weight`
+	     para la capacidad (`world.weightOf`) y `slotType` para EQUIPAR
+	     (`world.slotOf`): un objeto con `slotType` se puede poner y lo que
+	     declare cuenta. Uno sin `slotType` no se puede equipar por mucho que
+	     pese, y uno con un `slotType` que no encaja se queda en la mochila. Por
+	     eso cada pieza de equipo de este bloque declara los dos, y los adornos
+	     declaran `pickupable`, que es lo que hace falta para poder moverlos.
+
+	     PENDIENTE AJENO: estas 20 definiciones dejan desactualizadas las notas de
+	     varios monstruos y NPC que enumeran los ids que define este archivo (por
+	     ejemplo `data/monsters/humanoides/goblin.js`). Esos listados viven en
+	     otro ambito y no se tocan desde aqui.
+	-->
+
+	<!-- PROTECCION: `defense` Y NO `armor`.
+	     En el `items.xml` de Tibia la armadura de cuerpo declara `armor`. Aqui el
+	     unico sitio que recalcula lo que aporta lo puesto es
+	     `world.recomputeEquipment`, y ese lee `attack` para el ataque y `defense`
+	     para la armadura: la clave `armor` no la lee ninguna linea del motor
+	     (solo aparece en la lista de claves del editor). Por eso estas piezas
+	     declaran `defense`, que es la que de verdad suma. Con `armor` el objeto se
+	     podria poner y no aportaria nada, que es exactamente el objeto inutil que
+	     hay que evitar. Es una diferencia CONSCIENTE con el archivo de Tibia: el
+	     dia que el motor lea `armor`, se suma sin quitar `defense`, y queda
+	     escrito aqui para que nadie "arregle" una cosa creyendo arreglar la otra.
+
+	     Y LA MANO ES UNA RANURA SOLA. `world.equippedIn` busca por el nombre de
+	     la ranura, asi que el motor admite UN objeto por `slotType`. El escudo
+	     declara `hand`, igual que las armas: ponerse uno devuelve el otro al
+	     inventario. En Tibia son dos manos; aqui todavia no hay izquierda y
+	     derecha, y se prefiere decirlo a inventarse un `slotType` que el motor no
+	     conoce, porque entonces el escudo no tendria ranura ninguna y no se
+	     podria poner.
+	-->
+
+	<!-- ===================== Armas ===================== -->
+
+	<!-- `weaponType` es hoy SOLO DECLARATIVO: ninguna linea del motor lo lee (el
+	     ataque sale de `attack`, mira `attackProfile` en `engine/world/combat.js`).
+	     Se rellena igual, porque es lo que hara falta cuando existan las
+	     habilidades por tipo de arma y porque un datapack sin el no se puede
+	     importar. Los valores son los de Tibia: sword, axe, club y distance. -->
+
+	<item id="2401" article="a" name="dagger">
+		<attribute key="weight" value="950" />
+		<attribute key="attack" value="10" />
+		<attribute key="defense" value="6" />
+		<attribute key="weaponType" value="sword" />
+		<attribute key="slotType" value="hand" />
+		<attribute key="pickupable" value="1" />
+	</item>
+
+	<item id="2402" article="an" name="axe">
+		<attribute key="weight" value="4000" />
+		<attribute key="attack" value="20" />
+		<attribute key="defense" value="10" />
+		<attribute key="weaponType" value="axe" />
+		<attribute key="slotType" value="hand" />
+		<attribute key="pickupable" value="1" />
+	</item>
+
+	<item id="2403" article="a" name="mace">
+		<attribute key="weight" value="3800" />
+		<attribute key="attack" value="16" />
+		<attribute key="defense" value="11" />
+		<attribute key="weaponType" value="club" />
+		<attribute key="slotType" value="hand" />
+		<attribute key="pickupable" value="1" />
+	</item>
+
+	<!-- El arco NO declara `defense`: un arco no bloquea, y ponerle un numero ahi
+	     seria inventarle una virtud que no tiene. Su `attack` si cuenta, porque
+	     el ataque de un jugador sale del arma que lleva puesta. Lo que este motor
+	     NO tiene todavia es el sistema de distancia: no hay flechas, ni
+	     `shootType`, ni alcance, asi que hoy el arco pega como un arma de cuerpo a
+	     cuerpo. `distance` queda declarado para cuando ese sistema exista. -->
+	<item id="2404" article="a" name="bow">
+		<attribute key="weight" value="1800" />
+		<attribute key="attack" value="15" />
+		<attribute key="weaponType" value="distance" />
+		<attribute key="slotType" value="hand" />
+		<attribute key="pickupable" value="1" />
+	</item>
+
+	<!-- El baston se declara `club`, que es la familia de las armas de asta. Si al
+	     contrastar con Tibia resultara ser otra, se cambia esta linea y nada mas:
+	     `weaponType` no lo lee nadie. -->
+	<item id="2405" article="a" name="staff">
+		<attribute key="weight" value="2500" />
+		<attribute key="attack" value="12" />
+		<attribute key="defense" value="8" />
+		<attribute key="weaponType" value="club" />
+		<attribute key="slotType" value="hand" />
+		<attribute key="pickupable" value="1" />
+	</item>
+
+	<!-- ===================== Armaduras ===================== -->
+
+	<!-- Las tres van a `body`, que es la ranura del torso: por eso NO se pueden
+	     llevar dos a la vez, y ponerse las placas devuelve la de cuero a la
+	     mochila. El `defense` sube con el material (4, 6, 10) y el peso sube mas
+	     deprisa que la defensa (60, 100, 120 oz): es lo que hace que la armadura
+	     buena sea una decision y no una mejora gratis. -->
+
+	<item id="2406" article="a" name="leather armor">
+		<attribute key="weight" value="6000" />
+		<attribute key="defense" value="4" />
+		<attribute key="slotType" value="body" />
+		<attribute key="pickupable" value="1" />
+	</item>
+
+	<item id="2407" article="a" name="chain armor">
+		<attribute key="weight" value="10000" />
+		<attribute key="defense" value="6" />
+		<attribute key="slotType" value="body" />
+		<attribute key="pickupable" value="1" />
+	</item>
+
+	<item id="2408" article="a" name="plate armor">
+		<attribute key="weight" value="12000" />
+		<attribute key="defense" value="10" />
+		<attribute key="slotType" value="body" />
+		<attribute key="pickupable" value="1" />
+	</item>
+
+	<!-- ===================== Escudo, yelmo y botas ===================== -->
+
+	<!-- Comparte ranura con las armas (las dos van a `hand`), como se explica
+	     arriba: hoy un escudo y una espada no caben a la vez. -->
+	<item id="2409" article="a" name="wooden shield">
+		<attribute key="weight" value="4000" />
+		<attribute key="defense" value="8" />
+		<attribute key="slotType" value="hand" />
+		<attribute key="pickupable" value="1" />
+	</item>
+
+	<item id="2410" article="a" name="leather helmet">
+		<attribute key="weight" value="2200" />
+		<attribute key="defense" value="2" />
+		<attribute key="slotType" value="head" />
+		<attribute key="pickupable" value="1" />
+	</item>
+
+	<!-- Sin `article`: el nombre ya va en plural ("botas"), y un articulo suelto
+	     delante de un plural solo puede quedar mal. `plural` tampoco hace falta
+	     aqui: no se apilan, y de hecho no declaran `stackable`. -->
+	<item id="2411" name="leather boots">
+		<attribute key="weight" value="900" />
+		<attribute key="defense" value="1" />
+		<attribute key="slotType" value="feet" />
+		<attribute key="pickupable" value="1" />
+	</item>
+
+	<!-- ===================== Contenedor ===================== -->
+
+	<!-- BANDERA NUEVA EN ESTE ARCHIVO: `isContainer`.
+	     Significa "puede contener cosas". El motor la lee en un unico sitio,
+	     `Item.isContainer` (engine/world/item.js), y hoy NINGUNA otra linea la
+	     consulta: no existe `containerSize`, ni un inventario de contenedor, ni
+	     forma de abrir uno. Se declara igual, porque es la intencion del objeto y
+	     porque es la clave que el motor conoce (la del editor es `container`, el
+	     nombre de TFS, pero el getter lee `isContainer`: se escribe la que se
+	     lee).
+
+	     EL `slotType` DE UNA MOCHILA TIENE TRAMPA, y conviene escribirla.
+	     `world.equipmentOf` considera "puesto" todo lo que no tenga slot
+	     `backpack`, y `equipItem` marca `backpack` a lo que se quita. O sea que
+	     `backpack` es, en este motor, la marca de "guardado, no puesto". Con
+	     `slotType="backpack"` el objeto viaja con el nombre de ranura correcto
+	     (TFS lo usa, y `engine/persistence/database.js` lo nombra entre las
+	     ranuras: `hand`, `ring`, `backpack`), pero ponerselo no cambia nada
+	     visible: se queda donde estaba aunque el motor conteste que si. Se deja
+	     asi, declarado y avisado, en vez de quitarle el `slotType` y que la
+	     mochila deje de ser una mochila hasta que el motor tenga contenedores de
+	     verdad. -->
+	<item id="2412" article="a" name="backpack">
+		<attribute key="weight" value="1800" />
+		<attribute key="slotType" value="backpack" />
+		<attribute key="isContainer" value="1" />
+		<attribute key="pickupable" value="1" />
+	</item>
+
+	<!-- ===================== Pociones ===================== -->
+
+	<!-- `useable` MARCA LA INTENCION, NO HACE NADA POR SI SOLA. En el motor no hay
+	     ninguna bandera que consuma ese atributo: `registry.dispatchAction` busca
+	     una accion REGISTRADA por id de objeto y, si no la encuentra, devuelve
+	     `handled: false`. La palanca (1948) funciona porque existe
+	     `data/scripts/actions/others/lever.js`, no porque declare `useable`. Asi
+	     que estas dos pociones, hoy, se pueden recoger, apilar y llevar, y
+	     todavia NO se pueden beber: les falta su modulo en `data/scripts/actions`,
+	     que es otro ambito. Se declara `useable` igual, porque describe el objeto
+	     y porque es lo que el editor muestra como "tiene un onUse".
+
+	     CUANTO CURA NO SE ESCRIBE AQUI, Y ES A PROPOSITO. No hay ninguna clave en
+	     el motor para el efecto (`health`, `mana` o `healing` no las lee nadie), y
+	     este repositorio pone el COMPORTAMIENTO en modulos de JavaScript, no en
+	     XML: el dia que exista el onUse, el 125 o el 75 viven en ese script, que
+	     es donde se ve que pasa. Inventar aqui una clave muerta seria un numero
+	     que parece un dato y no lo es.
+
+	     `stackable` si que hace algo, y esta comprobado: al recoger del suelo
+	     (`world.pickUpItem`) y al dar un objeto (`world.giveItem`) el motor suma la
+	     cantidad a la entrada que ya existe, en vez de crear otra
+	     (engine/world/world.js). Por eso las pociones son lo unico de este bloque
+	     con `plural`: es lo que se vera cuando haya 30 en una linea. -->
+
+	<item id="2413" article="a" name="health potion" plural="health potions">
+		<attribute key="weight" value="250" />
+		<attribute key="stackable" value="1" />
+		<attribute key="useable" value="1" />
+		<attribute key="pickupable" value="1" />
+	</item>
+
+	<item id="2414" article="a" name="mana potion" plural="mana potions">
+		<attribute key="weight" value="250" />
+		<attribute key="stackable" value="1" />
+		<attribute key="useable" value="1" />
+		<attribute key="pickupable" value="1" />
+	</item>
+
+	<!-- ===================== Comida ===================== -->
+
+	<!-- Mismo caso que las pociones: `useable` describe, no ejecuta, asi que hoy
+	     se pueden llevar pero no comer — en el motor no hay hambre, ni
+	     `foodLevel`, ni regeneracion por comida. Y NO se declaran `stackable`: una
+	     pieza es una pieza, y apilarlas haria que una sola linea del inventario
+	     alimentara sin fin el dia que el comer exista. -->
+
+	<item id="2415" article="a" name="meat">
+		<attribute key="weight" value="1300" />
+		<attribute key="useable" value="1" />
+		<attribute key="pickupable" value="1" />
+	</item>
+
+	<item id="2416" article="a" name="bread">
+		<attribute key="weight" value="500" />
+		<attribute key="useable" value="1" />
+		<attribute key="pickupable" value="1" />
+	</item>
+
+	<!-- ===================== Adornos ===================== -->
+
+	<!-- Los adornos van en la banda de ARRIBA (`alwaysOnTop`), igual que la
+	     barandilla y la mesa: se dibujan por encima de las criaturas, que es lo
+	     que hace que un candelabro sobre una mesa se vea. Y NO declaran
+	     `blocksSolid`, tambien como la barandilla: un adorno que bloqueara
+	     convertiria una habitacion amueblada en un laberinto, y quien coloca un
+	     adorno no espera eso.
+
+	     LA LUZ NO SE DECLARA. La antorcha y el candelabro son fuentes de luz en
+	     Tibia, pero este motor no tiene luz por objeto: lo unico que hay es
+	     `defaultWorldLight` en `config.js`, que es del MUNDO. Una clave
+	     `lightLevel` aqui no la leeria nadie, asi que estos dos son, hoy, adornos
+	     que no alumbran. Es una carencia del motor, no del objeto, y se dice para
+	     que nadie la busque en el XML. -->
+
+	<item id="2417" article="a" name="torch">
+		<attribute key="weight" value="500" />
+		<attribute key="alwaysOnTop" value="1" />
+		<attribute key="pickupable" value="1" />
+	</item>
+
+	<item id="2418" article="a" name="flower pot">
+		<attribute key="weight" value="550" />
+		<attribute key="alwaysOnTop" value="1" />
+		<attribute key="pickupable" value="1" />
+	</item>
+
+	<item id="2419" article="a" name="vase">
+		<attribute key="weight" value="900" />
+		<attribute key="alwaysOnTop" value="1" />
+		<attribute key="pickupable" value="1" />
+	</item>
+
+	<item id="2420" article="a" name="candelabrum">
+		<attribute key="weight" value="2000" />
+		<attribute key="alwaysOnTop" value="1" />
+		<attribute key="pickupable" value="1" />
+	</item>
+
 </items>

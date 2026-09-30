@@ -1,5 +1,12 @@
 'use strict';
 
+import {
+    animacionDe,
+    candidatasDeAnimacion,
+    columnaDeFotograma,
+    intervaloDeAnimacion
+} from './sprite-anim.js';
+
 /**
  * Los sprites de BrowserQuest.
  *
@@ -31,6 +38,18 @@
  *   - OBJETOS: solo algunos. Hay espadas, armaduras y pociones, pero NO hay moneda, ni
  *     anillo, ni palanca, ni teleport. Se mapea lo que hay y el resto sigue con el dibujo de
  *     procedimiento, que es lo que hace cualquier proyecto de verdad.
+ *
+ *   - MOVIMIENTO: si, y es lo que le faltaba. El JSON de cada sprite dice cuantos
+ *     fotogramas tiene cada animacion (`length`) y en que fila esta (`row`), asi que basta
+ *     con ir cambiando de COLUMNA con el reloj. Antes se dibujaba siempre la columna 0, o
+ *     sea el primer fotograma de todo: las criaturas andaban deslizandose, con los pies
+ *     quietos. El calculo de que columna toca vive en `sprite-anim.js`, que es puro y se
+ *     puede comprobar sin navegador; aqui solo se recorta el fotograma que diga aquel.
+ *
+ *   - LO QUE NO TIENE DIBUJO PERO SI UN DIBUJO PROPIO: la moneda de oro (3031), la de
+ *     cristal (2160) y el anillo (2376), que son de lo que mas se ve en el mapa. Se pintan
+ *     aqui abajo, en `PROPIOS`, sin tocar `sprites.js`: se pide el MARCO al respaldo y se
+ *     pinta dentro. El porque, en el comentario de `PROPIOS`.
  *
  *   - SUELO: NO. `tilesheet.png` mide 320x1568 -10x49 casillas- y uno espera encontrar ahi
  *     la hierba y el agua. Lo que hay son CASAS, arboles, rocas y charcas: el suelo liso no
@@ -72,10 +91,175 @@ export const NPC = {
     Herrero: 'guard'
 };
 
-/** De id de objeto -los de Tibia- a dibujo. Solo lo que existe de verdad. */
+/**
+ * De id de objeto -los de este mundo- a dibujo. Solo lo que existe de verdad.
+ *
+ * DE DONDE SALE CADA ID, porque aqui es donde es facil inventar. Los ids NO se han
+ * copiado de Tibia: se han leido de `data/items/items.xml`, que es el catalogo de este
+ * mundo y el unico que este cliente puede ver. Ese archivo dice en su cabecera que de la
+ * zona 2400-2600 solo el 2400 es un id de Tibia y que 2401..2420 son HUECOS LIBRES
+ * elegidos a proposito; se mapean igual, porque el mapa `data/world/ciudad.map.json` ya
+ * coloca uno de cada. Lo que se empareja es el NOMBRE del objeto con el dibujo que mas se
+ * le parece, nunca un numero con una corazonada.
+ *
+ * LO QUE NO TIENE DIBUJO NO SE MAPEA, y no pasa nada: sigue saliendo por el proveedor de
+ * procedimiento, que es lo que hace cualquier proyecto de verdad. De los 17 dibujos de
+ * objeto que trae BrowserQuest aqui se usan 11; `item-sword2`, `item-redsword`,
+ * `item-bluesword`, `item-goldenarmor`, `item-redarmor` y `item-clotharmor` se quedan sin
+ * pareja porque en el catalogo no hay nada que se les parezca -un arco, un baston, un
+ * escudo, un yelmo, unas botas y una mochila no son ninguna de esas cosas- y forzar el
+ * parecido seria peor que dejar el rectangulo de color.
+ */
 export const OBJETOS = {
-    2400: 'item-goldensword'   // magic sword
+    // --- Armas ---
+    2400: 'item-goldensword',   // magic sword
+    2401: 'item-sword1',        // dagger: de los dos dibujos de espada, el mas corto y fino
+    2402: 'item-axe',           // axe
+    2403: 'item-morningstar',   // mace: una maza de bola con pinchos es un morning star
+    // 2404 bow y 2405 staff: no hay arco ni baston entre los dibujos.
+
+    // --- Proteccion ---
+    2406: 'item-leatherarmor',  // leather armor
+    2407: 'item-mailarmor',     // chain armor: `mail` es justo la malla de anillas
+    2408: 'item-platearmor',    // plate armor
+
+    // --- Pociones y comida ---
+    2413: 'item-flask',         // health potion: el frasco con liquido rojo
+    2414: 'item-firepotion',    // mana potion: no hay frasco azul y es el unico que queda
+    2415: 'item-burger',        // meat: lo mas parecido a un trozo de carne
+    2416: 'item-cake'           // bread: no hay pan; lo mas parecido es lo horneado
 };
+
+/** Los colores. Nuestros, no los de Tibia: no se puede copiar un sprite que no se tiene. */
+const PALETA_ORO = { cara: '#e8c24a', borde: '#6d4c10', brillo: '#fff0a8', piedra: '#c03030' };
+const PALETA_CRISTAL = { cara: '#a8e4f0', borde: '#2a6a7a', brillo: '#f4ffff', piedra: '#3070c0' };
+
+/*
+ * LOS TRES OBJETOS QUE SE DIBUJAN AQUI, SIN SPRITE.
+ *
+ * La moneda de oro (3031) y el anillo (2376) salen en el botin de casi todos los monstruos
+ * -el 3031 esta en 14 de los 15 ficheros de `data/monsters/`- y el mapa de la ciudad tiene
+ * 29 monedas de oro, 5 de cristal y 1 anillo. Son, con diferencia, lo que mas se ve en el
+ * suelo, y su dibujo de procedimiento es un rectangulo de color: mejorarlo se nota mas que
+ * cualquier otra cosa de este archivo.
+ *
+ * POR QUE AQUI Y NO EN `sprites.js`. Ese archivo es el proveedor de procedimiento y no es
+ * de este cambio; la forma que tiene este proveedor de mejorar algo es DEVOLVER SU PROPIO
+ * LIENZO antes de recurrir al respaldo, que es justo lo que se hace aqui.
+ *
+ * EL RESPALDO SE SIGUE CONSULTANDO, y esto no es un detalle: hay una prueba que exige que
+ * al pedir el 3031 se le pregunte a el -"el proveedor de BrowserQuest no deja huecos"-, y
+ * tiene razon, porque un proveedor que decide por su cuenta lo que no hace falta puede
+ * acabar dejando un agujero. De el se toma el MARCO: el tamano del lienzo y, sobre todo,
+ * el ANCLA, que es lo que dice en que fila del lienzo empieza la casilla. Sus pixeles no se
+ * copian porque son una barra de color que el dibujo nuevo tapa igual, y copiarla solo
+ * dejaria una mancha dorada asomando por encima de las monedas.
+ *
+ * SI EL RESPALDO NO DA NADA -o si el entorno no tiene DOM- se usa el mismo ancla por defecto
+ * que el usa para sus formas, asi que el objeto NO CAMBIA DE MARCO. Lo unico que cambia es
+ * DONDE cae dentro de el: el respaldo pintaba su barra pegada al borde de arriba del lienzo,
+ * medio fuera de la casilla, y aqui se pinta dentro de la casilla, que es donde se ve una
+ * moneda en el suelo. El ancla, que es lo que situa el marco entero, no se toca.
+ */
+
+const PROPIOS = {
+    3031: { dibujo: pintarMonedas, paleta: PALETA_ORO },
+    2160: { dibujo: pintarMonedas, paleta: PALETA_CRISTAL },
+    2376: { dibujo: pintarAnillo, paleta: PALETA_ORO }
+};
+
+/**
+ * El ancla por defecto, si no hay respaldo del que heredarla.
+ *
+ * Es 4 porque es la que usa el proveedor de procedimiento para sus formas pequeñas -el
+ * `height` de su forma, que es lo que sobresale por encima de la casilla-, y asi el objeto
+ * cae en el mismo sitio con respaldo y sin el.
+ */
+const ANCLA_POR_DEFECTO = 4;
+
+/** La banda donde se dibuja, contada DESDE el ancla: ancho, alto y margen de arriba. */
+const BANDA_ANCHO = 24;
+const BANDA_ALTO = 16;
+const BANDA_MARGEN = 2;
+
+/** Una moneda suelta, vista desde arriba y un poco de lado. */
+function pintarMoneda(ctx, x, y, paleta) {
+    ctx.beginPath();
+    ctx.ellipse(x, y, 4.6, 3.6, 0, 0, Math.PI * 2);
+    ctx.fillStyle = paleta.cara;
+    ctx.fill();
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = paleta.borde;
+    ctx.stroke();
+
+    // Un brillo arriba a la izquierda: sin el, la moneda parece un boton.
+    ctx.beginPath();
+    ctx.ellipse(x - 1.3, y - 1, 1.7, 1, 0, 0, Math.PI * 2);
+    ctx.fillStyle = paleta.brillo;
+    ctx.fill();
+}
+
+/**
+ * Una pila de monedas.
+ *
+ * Se dibuja una SOMBRA debajo y las monedas de abajo arriba, para que cada una tape a la
+ * anterior: asi la pila se lee como un monton y no como una mancha. La sombra es lo que la
+ * apoya en el suelo; sin ella el monton parece flotar, que es el mismo criterio que sigue
+ * el renderer con las criaturas.
+ */
+function pintarMonedas(ctx, marco, paleta) {
+    const cx = marco.cx;
+    const baseY = marco.y1 - 4;
+
+    ctx.fillStyle = 'rgba(0,0,0,0.25)';
+    ctx.beginPath();
+    ctx.ellipse(cx, baseY + 2, 11, 3, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Tres apoyadas y dos encima: con menos no parece una pila y con mas no cabe.
+    const puestos = [[-7, 0], [0, -0.5], [7, 0], [-3.5, -4], [3.5, -4.5]];
+    puestos.forEach((sitio) => pintarMoneda(ctx, cx + sitio[0], baseY + sitio[1], paleta));
+}
+
+/**
+ * Un anillo.
+ *
+ * El aro va como tres elipses -la cara, el borde de fuera y el de dentro- porque un aro
+ * grueso sin los bordes no se distingue de una mancha. La piedra es un adorno NUESTRO: no
+ * hay anillo entre los dibujos de BrowserQuest y el de Tibia no se puede copiar, asi que se
+ * dibuja un anillo generico en vez de fingir que es el suyo.
+ */
+function pintarAnillo(ctx, marco, paleta) {
+    const cx = marco.cx;
+    const cy = marco.y1 - 6;
+
+    ctx.fillStyle = 'rgba(0,0,0,0.25)';
+    ctx.beginPath();
+    ctx.ellipse(cx, cy + 5, 7, 2.5, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.beginPath();
+    ctx.ellipse(cx, cy, 6.5, 5, 0, 0, Math.PI * 2);
+    ctx.lineWidth = 2.6;
+    ctx.strokeStyle = paleta.cara;
+    ctx.stroke();
+
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = paleta.borde;
+    ctx.beginPath();
+    ctx.ellipse(cx, cy, 7.6, 6.1, 0, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.ellipse(cx, cy, 5.4, 3.9, 0, 0, Math.PI * 2);
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.ellipse(cx, cy - 5.2, 2, 1.6, 0, 0, Math.PI * 2);
+    ctx.fillStyle = paleta.piedra;
+    ctx.fill();
+    ctx.strokeStyle = paleta.borde;
+    ctx.stroke();
+}
 
 /**
  * Las cuatro direcciones del motor, en los nombres de BrowserQuest.
@@ -171,6 +355,14 @@ export class BrowserQuestProvider {
             if (!datos || !imagen) {
                 this.fallos.add(nombre);
             }
+        }).catch(() => {
+            /*
+             * Sin este `catch`, el fallo de carga queda como RECHAZO SIN MANEJAR, y eso en
+             * Node tumba el proceso entero -la prueba de dibujo importa este modulo y llama a
+             * `get()`, asi que la cadena se llega a disparar alli-. Se anota como fallo y se
+             * sigue: un sprite que no carga ya tiene salida, que es el respaldo.
+             */
+            this.fallos.add(nombre);
         });
 
         return null;
@@ -179,12 +371,25 @@ export class BrowserQuestProvider {
     /**
      * El fotograma que toca, en coordenadas de la hoja.
      *
-     * Se busca la animacion `idle_<direccion>` y, si el sprite no la tiene, `walk_<direccion>`.
-     * Y si no tiene ninguna de las dos -los objetos solo tienen `idle`- se usa la primera que
-     * haya. El JSON dice en que FILA esta cada una, que es justo el dato que no se puede
-     * deducir mirando la imagen.
+     * Se busca la animacion que toca -andando manda `walk_<direccion>`, quieto manda
+     * `idle_<direccion>`- y, si el sprite no tiene ninguna de las dos, la primera que traiga
+     * el fichero, que es lo que hace que los objetos -que solo tienen `idle`- funcionen sin
+     * un caso especial. El JSON dice en que FILA esta cada animacion, que es justo el dato
+     * que no se puede deducir mirando la imagen.
+     *
+     * LA COLUMNA LA DECIDE EL RELOJ, y el reloj entra por parametro: `ahora`. Ese instante
+     * es el mismo que usa el resto del cliente -`performance.now()`, ver `renderer.js`-, y
+     * de ahi sale el numero de fotograma. Sin instante se dibuja el primero, que es lo que
+     * hacia este proveedor antes de animar nada y lo que sigue haciendo el editor, que pide
+     * los objetos sin reloj.
+     *
+     * @param {string} nombre el sprite
+     * @param {number} [direccion] la direccion del motor
+     * @param {number} [ahora] el instante del reloj del cliente
+     * @param {boolean} [quiereAndar] si la animacion de andar tiene prioridad
+     * @param {number} [desfase] fotogramas de adelanto, para desincronizar
      */
-    _fotograma(nombre, direccion) {
+    _fotograma(nombre, direccion, ahora, quiereAndar, desfase) {
         const entrada = this._entrada(nombre);
         if (!entrada) {
             return null;
@@ -194,37 +399,27 @@ export class BrowserQuestProvider {
         const animaciones = datos.animaciones || datos.animations || {};
 
         const dir = DIRECCIONES[direccion === undefined ? 2 : direccion] || DIRECCIONES[2];
-        const candidatas = ['idle_' + dir.nombre, 'walk_' + dir.nombre,
-            'idle', 'walk', 'idle_down', 'walk_down'];
 
-        let elegida = null;
-        for (const clave of candidatas) {
-            if (animaciones[clave]) {
-                elegida = animaciones[clave];
-                break;
-            }
-        }
+        // El calculo del fotograma es puro y vive en `sprite-anim.js`: aqui solo se recorta.
+        const elegida = animacionDe(animaciones, candidatasDeAnimacion(dir.nombre, quiereAndar));
+        const fila = elegida && elegida.animacion.row !== undefined ? elegida.animacion.row : 0;
+        const largo = elegida && elegida.animacion.length !== undefined ? elegida.animacion.length : 1;
 
-        // Si no hay ninguna de las esperadas, la primera que traiga el fichero. Asi un sprite
-        // con una sola animacion -todos los objetos- funciona sin caso especial.
-        if (!elegida) {
-            const claves = Object.keys(animaciones);
-            elegida = claves.length > 0 ? animaciones[claves[0]] : null;
-        }
-
-        const fila = elegida && elegida.row !== undefined ? elegida.row : 0;
+        const intervalo = intervaloDeAnimacion(elegida ? elegida.clave : null, largo);
+        const columna = columnaDeFotograma(ahora, intervalo, largo, desfase);
 
         return {
             imagen: entrada.imagen,
-            // El primer fotograma de la animacion. Animar es el paso siguiente; dibujar el
-            // primero ya cambia el juego entero y no depende del reloj, que es donde estaban
-            // los fallos.
-            sx: 0,
+            sx: columna * datos.width,
             sy: fila * datos.height,
             sw: datos.width,
             sh: datos.height,
             espejar: dir.espejar,
-            alto: datos.height
+            // La animacion y la columna van en el resultado porque son parte de la IDENTIDAD
+            // del fotograma: sin ellas, el lienzo de un fotograma se reutilizaria para otro
+            // y el muñeco se quedaria congelado en el primero que se dibujara.
+            clave: elegida ? elegida.clave : 'fila' + fila,
+            columna: columna
         };
     }
 
@@ -313,21 +508,123 @@ export class BrowserQuestProvider {
         return this.respaldo ? this.respaldo.get(typeId) : null;
     }
 
-    /** El sprite de un objeto del suelo, o lo que ponga el respaldo. */
-    get(typeId) {
-        const nombre = OBJETOS[Number(typeId)];
-
-        if (!nombre) {
-            return this._pedirAlRespaldo(typeId);
+    /**
+     * Un lienzo fuera de pantalla, o null si este entorno no tiene DOM.
+     *
+     * El modulo se importa TAMBIEN desde Node -la prueba de dibujo lo hace para comprobar
+     * que este proveedor nunca deja un hueco-, y alli no hay `document`. Devolver null en vez
+     * de reventar es lo que mantiene el modulo comprobable fuera del navegador; quien llama
+     * decide que hacer sin lienzo, y siempre hay una salida decente: el respaldo.
+     */
+    _lienzo(ancho, alto) {
+        if (typeof document === 'undefined' || !document.createElement) {
+            return null;
         }
 
-        const fotograma = this._fotograma(nombre);
+        const lienzo = document.createElement('canvas');
+        lienzo.width = ancho;
+        lienzo.height = alto;
 
-        if (!fotograma) {
-            return this._pedirAlRespaldo(typeId);
+        return lienzo;
+    }
+
+    /**
+     * El dibujo propio de un objeto, con el MARCO que da el respaldo.
+     *
+     * El marco es el tamano del lienzo y el ANCLA. El ancla es lo que dice en que fila del
+     * lienzo empieza la casilla, y por eso se hereda en vez de escribirla a mano: si el
+     * respaldo cambia su forma, esto sigue cayendo donde cae el, que es lo que se quiere.
+     * Si no hay respaldo, o no da un lienzo, se usa el marco por defecto -el mismo que el usa
+     * para estas formas-, asi que el objeto no se mueve de sitio en ningun caso.
+     *
+     * La banda de dibujo se cuenta DESDE el ancla, o sea en filas de la casilla: los primeros
+     * pixeles de la casilla son los pies de quien esta encima, asi que ahi es donde tiene que
+     * estar una moneda en el suelo.
+     */
+    _dibujoPropio(typeId) {
+        const receta = PROPIOS[typeId];
+        if (!receta) {
+            return null;
         }
 
-        return this._aCasilla(nombre + '@' + typeId, fotograma);
+        const clave = 'propio:' + typeId;
+        const guardado = this.lienzos.get(clave);
+        if (guardado) {
+            return guardado;
+        }
+
+        // El respaldo se consulta SIEMPRE, tambien para estos tres: es la regla que impide
+        // que un objeto se convierta en un agujero negro, y es lo que comprueba la prueba.
+        const base = this._pedirAlRespaldo(typeId);
+        const lienzoBase = base && base.canvas && typeof base.canvas === 'object' ? base.canvas : null;
+
+        const anchoBase = lienzoBase && typeof lienzoBase.width === 'number' ? lienzoBase.width : TILE;
+        const altoBase = lienzoBase && typeof lienzoBase.height === 'number' ? lienzoBase.height : TILE;
+        const ancla = base && typeof base.anchorY === 'number' ? base.anchorY : ANCLA_POR_DEFECTO;
+
+        const ancho = Math.max(TILE, Math.round(anchoBase));
+        // El lienzo se alarga lo justo para que quepa la banda: si el respaldo la dejara
+        // fuera, el dibujo saldria recortado por abajo.
+        const alto = Math.max(Math.round(altoBase), Math.ceil(ancla + BANDA_MARGEN + BANDA_ALTO + 2));
+
+        const lienzo = this._lienzo(ancho, alto);
+        if (!lienzo) {
+            return base;
+        }
+
+        const banda = {
+            ancho: ancho,
+            alto: alto,
+            ancla: ancla,
+            y0: ancla + BANDA_MARGEN,
+            y1: ancla + BANDA_MARGEN + BANDA_ALTO,
+            cx: Math.round(ancho / 2)
+        };
+
+        receta.dibujo(lienzo.getContext('2d'), banda, receta.paleta);
+
+        const sprite = { canvas: lienzo, anchorY: ancla };
+        this.lienzos.set(clave, sprite);
+
+        return sprite;
+    }
+
+    /**
+     * El sprite de un objeto del suelo, o lo que ponga el respaldo.
+     *
+     * EL ORDEN DE LOS TRES CAMINOS ES LA REGLA, y no da igual cual vaya primero:
+     *
+     *   1. El dibujo de BrowserQuest, que es un dibujo de verdad.
+     *   2. El dibujo propio de la moneda y el anillo, que es mejor que un rectangulo pero peor
+     *      que un dibujo de verdad: si algun dia aparece su sprite, gana el sprite.
+     *   3. El respaldo, para todo lo demas.
+     *
+     * @param {number} typeId el id del objeto
+     * @param {number} [ahora] el instante del reloj del cliente, para elegir el fotograma
+     */
+    get(typeId, ahora) {
+        const id = Number(typeId);
+        const nombre = OBJETOS[id];
+
+        if (nombre) {
+            const fotograma = this._fotograma(nombre, undefined, ahora, false, id);
+
+            if (!fotograma) {
+                // El sprite todavia no ha cargado. Mientras tanto dibuja el respaldo: un
+                // rectangulo de color medio segundo se nota menos que un hueco.
+                return this._pedirAlRespaldo(id);
+            }
+
+            return this._aCasilla(nombre + '@' + id + '#' + fotograma.clave + ':' +
+                fotograma.columna, fotograma);
+        }
+
+        const propio = this._dibujoPropio(id);
+        if (propio) {
+            return propio;
+        }
+
+        return this._pedirAlRespaldo(id);
     }
 
     /**
@@ -335,8 +632,17 @@ export class BrowserQuestProvider {
      *
      * El ancho del lienzo se toma del propio fotograma cuando es MAS GRANDE que una casilla,
      * porque un jefe de 48x48 dibujado en un lienzo de 32 saldria cortado.
+     *
+     * ANDAR O ESTAR QUIETO lo dice la lista de dibujo: `op.moving` es verdadero mientras la
+     * criatura se desliza de una casilla a la siguiente. Ese dato ya viajaba hasta aqui -lo
+     * pone `drawlist.js` al interpolar- y antes no se miraba, asi que un muñeco que andaba
+     * seguia con la animacion de reposo. El desfase va con el IDENTIFICADOR: sin el, todas las
+     * ratas de la pantalla andarian con el mismo pie a la vez.
+     *
+     * @param {Object} op la operacion de dibujo de la criatura
+     * @param {number} [ahora] el instante del reloj del cliente
      */
-    getCreature(op) {
+    getCreature(op, ahora) {
         if (!op) {
             return null;
         }
@@ -357,14 +663,15 @@ export class BrowserQuestProvider {
             return null;
         }
 
-        const fotograma = this._fotograma(nombre, op.direction);
+        const fotograma = this._fotograma(nombre, op.direction, ahora, !!op.moving, op.id);
         if (!fotograma) {
             return null;
         }
 
         const lado = Math.max(TILE, fotograma.sw, fotograma.sh);
 
-        return this._aCasilla(nombre + ':' + (op.direction || 0) + ':' + lado, fotograma, lado);
+        return this._aCasilla(nombre + ':' + (op.direction || 0) + ':' + lado + '#' +
+            fotograma.clave + ':' + fotograma.columna, fotograma, lado);
     }
 
     /** Cuantos sprites estan listos para dibujar. */
@@ -383,6 +690,12 @@ export class BrowserQuestProvider {
         return {
             pedidas: this.entradas.size,
             listas: this.size,
+            /*
+             * Cuantos lienzos hay construidos. Se cuenta desde que hay animacion porque el
+             * numero ya no es "uno por sprite": es uno por sprite Y FOTOGRAMA, y es el dato
+             * que dice si la cache esta haciendo su trabajo o creciendo sin freno.
+             */
+            lienzos: this.lienzos.size,
             fallos: Array.from(this.fallos)
         };
     }

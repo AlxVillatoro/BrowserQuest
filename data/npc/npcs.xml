@@ -29,4 +29,79 @@
 		<look type="134" head="95" body="40" legs="30" feet="115" addons="0" />
 	</npc>
 
+	<!--
+	    ==========================================================================
+	    Los seis NPC de abajo
+	    ==========================================================================
+
+	    DEFINE Y COLOCA SON DOS COSAS DISTINTAS. Este archivo dice CÓMO es cada NPC; dónde
+	    aparece lo dice el mapa, en su lista `npcs`. Los seis de abajo están definidos y sin
+	    colocar: el motor avisa cuando el mapa coloca a alguien que no está definido, pero de
+	    una definición sin colocar no dice nada, así que definirla no rompe nada... aunque
+	    tampoco se ve, hasta que se le ponga una casilla en `data/world/sample.map.json`.
+
+	    `module` es una RUTA relativa a `data/npc/`, sin extensión, y por eso `campo/pescador`
+	    funciona igual que `ciudad/tendero`: el cargador recorre las carpetas, así que la
+	    carpeta es organización y no una regla. Se usa la de TFS: los NPC de la ciudad en
+	    `ciudad/` y el que vive fuera en `campo/`.
+
+	    LOS `look` SALEN TODOS DE `data/XML/outfits.xml`, que es donde están los aspectos que
+	    existen (del 128 al 137). Poner un id que no esté ahí sería inventarse un aspecto y el
+	    cliente no tendría sprites que enseñar. Los colores —head, body, legs, feet— son
+	    índices de la paleta del cliente: cambian el color, no la forma, así que elegirlos es
+	    cuestión de gusto y no un dato que haya que respetar.
+
+	    `walkradius` ES EL QUE DECIDE SI PASEA, no `walkinterval`. El radio es cuántas
+	    casillas se aleja de donde aparece; con radio cero no da un paso aunque tenga
+	    intervalo, porque el motor exige los dos (mira `Npc.think`). Por eso el tendero, el
+	    banquero y el guía llevan intervalo y no llevan radio: atienden desde su sitio.
+	-->
+
+	<!--
+	    El tendero atiende desde el mostrador: radio cero. Su `walkinterval` está porque el
+	    XML lo pide, no porque sirva de nada.
+	-->
+	<npc name="Tendero" module="ciudad/tendero" walkinterval="5000" speed="100">
+		<health now="100" max="100" />
+		<look type="128" head="78" body="116" legs="100" feet="115" addons="0" />
+	</npc>
+
+	<!-- El sanador se mueve poco y despacio: un paso de radio y velocidad baja. -->
+	<npc name="Sanador" module="ciudad/sanador" walkinterval="6000" walkradius="1" speed="95">
+		<health now="100" max="100" />
+		<look type="136" head="79" body="9" legs="9" feet="115" addons="0" />
+	</npc>
+
+	<!--
+	    El banquero no se mueve y es el más lento de todos. Va con el aspecto Nobleman, que en
+	    `outfits.xml` es `premium="1"`: da igual, porque `premium` es un atributo de las
+	    CUENTAS de jugador y a un NPC no se le comprueba el aspecto (el único sitio que llama
+	    a `canUseOutfit` es el `setOutfit` del envoltorio de jugador).
+	-->
+	<npc name="Banquero" module="ciudad/banquero" walkinterval="8000" speed="90">
+		<health now="100" max="100" />
+		<look type="132" head="78" body="12" legs="12" feet="114" addons="0" />
+	</npc>
+
+	<!--
+	    El guardia es el que más pasea además del herrero: radio dos y el intervalo más
+	    corto, que es lo que hace que parezca estar rondando la puerta en vez de esperando.
+	-->
+	<npc name="Guardia" module="ciudad/guardia" walkinterval="3500" walkradius="2" speed="110">
+		<health now="100" max="100" />
+		<look type="131" head="78" body="116" legs="116" feet="114" addons="0" />
+	</npc>
+
+	<!-- El anciano anda un paso y muy despacio: la velocidad más baja de todo el archivo. -->
+	<npc name="Anciano" module="ciudad/anciano" walkinterval="7000" walkradius="1" speed="80">
+		<health now="100" max="100" />
+		<look type="128" head="78" body="57" legs="57" feet="115" addons="0" />
+	</npc>
+
+	<!-- El pescador vive fuera de la ciudad, y por eso su módulo está en `campo/`. -->
+	<npc name="Pescador" module="campo/pescador" walkinterval="6000" walkradius="2" speed="95">
+		<health now="100" max="100" />
+		<look type="129" head="78" body="100" legs="116" feet="114" addons="0" />
+	</npc>
+
 </npcs>

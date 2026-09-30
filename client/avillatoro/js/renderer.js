@@ -14,6 +14,25 @@
 import { DRAW } from './drawlist.js';
 import { TILE, paletteColor, darker } from './sprites.js';
 
+/**
+ * El reloj del cliente: `performance.now()`.
+ *
+ * ES EL MISMO RELOJ QUE USA TODO LO DEMAS, y eso es lo unico que importa aqui. `world.now`
+ * mide con `performance.now()`, que son milisegundos desde que se abrio la pagina, y el
+ * bucle de dibujo recibe lo mismo de `requestAnimationFrame`. Lo que NO se puede usar es
+ * `Date.now()`: mide desde 1970, o sea un billon y pico de milisegundos, y mezclar las dos
+ * escalas no da un desfase pequeño, da uno de un billon. Ya paso en este proyecto, con un
+ * paso que se quedaba clavado en su casilla porque `elapsed` salia enormemente negativo.
+ *
+ * Se inyecta por el constructor para poder probarlo sin esperar, igual que en `world.js`.
+ */
+function relojDelCliente() {
+    if (typeof performance !== 'undefined' && performance.now) {
+        return () => performance.now();
+    }
+    return () => Date.now();
+}
+
 export class Renderer {
     constructor(options) {
         const opts = options || {};
@@ -23,6 +42,9 @@ export class Renderer {
         this.provider = opts.provider;
         this.showNames = opts.showNames !== false;
         this.showHealth = opts.showHealth !== false;
+
+        /** El reloj con el que se elige el fotograma de cada animacion. */
+        this.now = opts.now || relojDelCliente();
 
         /** Contadores para el diagnóstico. */
         this.stats = { frames: 0, ops: 0, lastFrameMs: 0 };
@@ -58,10 +80,23 @@ export class Renderer {
      *
      * @param {Array} ops lista de dibujo, ya ordenada
      * @param {Camera} camera
-     * @param {Object} [state] datos para la interfaz: jugador, textos
+     * @param {Object} [state] datos para la interfaz: jugador, textos, y el instante del fotograma
      */
     draw(ops, camera, state) {
-        const started = performance.now();
+        /*
+         * EL INSTANTE SE TOMA UNA VEZ POR FOTOGRAFO, y con el se hace todo: el cronometro del
+         * diagnostico y la eleccion del fotograma de cada animacion. Que sea UNO SOLO es la
+         * regla; dos muestras del mismo reloj con microsegundos de diferencia no rompen nada,
+         * pero dos relojes distintos -`Date.now()` por un lado y `requestAnimationFrame` por
+         * otro- si, y esa cicatriz ya la tiene este proyecto.
+         *
+         * Si quien llama ya trae el instante del fotograma -`state.now`, que es lo que hace
+         * falta si algun dia `main.js` quiere pasar el MISMO que le dio `requestAnimationFrame`
+         * al mundo-, se usa ese: asi la animacion y la interpolacion de las criaturas miran
+         * exactamente el mismo numero.
+         */
+        const started = this.now();
+        const ahora = state && typeof state.now === 'number' ? state.now : started;
         const ctx = this.ctx;
 
         ctx.fillStyle = '#101014';
@@ -94,9 +129,9 @@ export class Renderer {
 
         ops.forEach((op) => {
             if (op.kind === DRAW.CREATURE) {
-                this._drawCreature(op);
+                this._drawCreature(op, ahora);
             } else {
-                this._drawSprite(op);
+                this._drawSprite(op, ahora);
             }
         });
 
@@ -106,11 +141,19 @@ export class Renderer {
 
         this.stats.frames += 1;
         this.stats.ops = ops.length;
-        this.stats.lastFrameMs = performance.now() - started;
+        this.stats.lastFrameMs = this.now() - started;
     }
 
-    _drawSprite(op) {
-        const sprite = this.provider.get(op.typeId);
+    /**
+     * El sprite de un objeto.
+     *
+     * El instante viaja hasta el proveedor porque es el quien elige el fotograma: los objetos
+     * tambien tienen animacion -su `idle`, que en estos ficheros son seis fotogramas de un
+     * brillo-, y sin el reloj se quedarian en el primero. El proveedor de procedimiento
+     * ignora el segundo argumento, asi que esto no le afecta.
+     */
+    _drawSprite(op, ahora) {
+        const sprite = this.provider.get(op.typeId, ahora);
         if (!sprite) {
             return;
         }
@@ -125,7 +168,7 @@ export class Renderer {
         );
     }
 
-    _drawCreature(op) {
+    _drawCreature(op, ahora) {
         const x = Math.round(op.sx);
         const y = Math.round(op.sy);
 
@@ -156,7 +199,7 @@ export class Renderer {
          * El `else` cierra justo antes de la barra de vida, para que el nombre y la vida se
          * dibujen SIEMPRE, con sprite o sin el: son interfaz, no cuerpo.
          */
-        const sprite = this.provider.getCreature ? this.provider.getCreature(op) : null;
+        const sprite = this.provider.getCreature ? this.provider.getCreature(op, ahora) : null;
 
         if (sprite) {
             this.ctx.drawImage(sprite.canvas,
