@@ -122,6 +122,24 @@ export class BrowserQuestProvider {
         const opts = opciones || {};
 
         this.resolucion = opts.resolucion || RESOLUCION;
+
+        /*
+         * EL PROVEEDOR DE PROCEDIMIENTO, DETRAS.
+         *
+         * BrowserQuest tiene una docena de monstruos y Tibia cientos, y de objetos solo
+         * cubre espadas, armaduras y pociones: no hay moneda, ni anillo, ni palanca, ni
+         * suelo. Todo lo que no tiene dibujo aqui tiene que salir por el otro proveedor.
+         *
+         * ESTO FALTABA Y SE VIO EN PANTALLA. Sustitui el proveedor de procedimiento por este
+         * en vez de ponerlo delante, y como `get()` devolvia null para todo lo que no fuera
+         * la espada, el mundo entero se quedo NEGRO: 180 tiles de suelo en la lista de dibujo
+         * y ninguno pintado. Las criaturas si se veian, porque su camino ya tenia el `else`
+         * que recurre al dibujo de procedimiento. Los objetos no lo tenian.
+         *
+         * La leccion es la de siempre en este proyecto: sustituir donde habia que componer.
+         */
+        this.respaldo = opts.respaldo || null;
+
         this.entradas = new Map();
         this.fallos = new Set();
         this.lienzos = new Map();
@@ -284,16 +302,29 @@ export class BrowserQuestProvider {
         return sprite;
     }
 
-    /** El sprite de un objeto del suelo. */
+    /**
+     * Lo que este proveedor no tiene, lo dibuja el de procedimiento.
+     *
+     * Se pregunta al respaldo SOLO cuando aqui no hay nada, y no al reves: lo que viene de
+     * BrowserQuest es un dibujo de verdad y lo que viene del otro es una forma de color, asi
+     * que cuando los dos pueden, gana el de verdad.
+     */
+    _pedirAlRespaldo(typeId) {
+        return this.respaldo ? this.respaldo.get(typeId) : null;
+    }
+
+    /** El sprite de un objeto del suelo, o lo que ponga el respaldo. */
     get(typeId) {
         const nombre = OBJETOS[Number(typeId)];
+
         if (!nombre) {
-            return null;
+            return this._pedirAlRespaldo(typeId);
         }
 
         const fotograma = this._fotograma(nombre);
+
         if (!fotograma) {
-            return null;
+            return this._pedirAlRespaldo(typeId);
         }
 
         return this._aCasilla(nombre + '@' + typeId, fotograma);

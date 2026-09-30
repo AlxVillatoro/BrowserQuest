@@ -242,7 +242,10 @@ export function createProvider(options) {
      * una cadena mal escrita es peor que uno que dibuja rectangulos.
      */
     if (opts.provider === 'browserquest') {
-        return new BrowserQuestProvider({ resolucion: opts.resolucion });
+        return new BrowserQuestProvider({
+            resolucion: opts.resolucion,
+            respaldo: new ProceduralProvider()
+        });
     }
 
     if (opts.provider === 'spr' && opts.assets) {

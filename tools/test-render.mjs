@@ -20,6 +20,7 @@ import { Camera, TILE_PIXELS, floorOffset } from '../client/avillatoro/js/camera
 import { ClientWorld } from '../client/avillatoro/js/world.js';
 import { buildDrawList, forEachTileInDrawOrder, summarize, DRAW } from '../client/avillatoro/js/drawlist.js';
 import { paletteColor, darker, PALETTE_SIZE } from '../client/avillatoro/js/sprites.js';
+import { BrowserQuestProvider } from '../client/avillatoro/js/browserquest.js';
 
 // El protocolo es el mismo archivo que usa el motor, y es CommonJS-friendly: se
 // carga con require para no depender de la ruta del montaje del servidor.
@@ -566,6 +567,54 @@ function main() {
         check('una camara en coordenadas enteras no necesita alineacion',
             desplazamiento.x === 0 && desplazamiento.y === 0,
             'el suelo queda en pixeles enteros sin tocar nada');
+    }
+
+    // =======================================================================
+    section('11. El proveedor de BrowserQuest NO deja huecos');
+    // =======================================================================
+
+    {
+        /*
+         * ESTA SECCION EXISTE POR UN FALLO QUE SE VIO EN PANTALLA: un mundo NEGRO.
+         *
+         * El proveedor de BrowserQuest sabe dibujar la rata y la espada, y nada mas: no tiene
+         * moneda, ni anillo, ni suelo. Al sustituir el de procedimiento por el en vez de
+         * ponerlo DELANTE, cada tile de suelo devolvia null y no se pintaba ninguno. La lista
+         * de dibujo llevaba 180 tiles de suelo y en pantalla no habia nada.
+         *
+         * Lo que se comprueba aqui es la propiedad que impide eso: pase lo que pase, `get()`
+         * devuelve algo. Un proveedor que devuelve null para lo que no conoce convierte
+         * cualquier cosa que le falte en un agujero negro.
+         */
+        const respaldo = {
+            pedidos: [],
+            get(typeId) {
+                this.pedidos.push(typeId);
+                return { canvas: 'respaldo de ' + typeId, anchorY: 32 };
+            }
+        };
+
+        const bq = new BrowserQuestProvider({ respaldo: respaldo });
+
+        // Un suelo que BrowserQuest no tiene: tiene que salir por el respaldo.
+        const hierba = bq.get(102);
+
+        check('lo que BrowserQuest no tiene lo dibuja el respaldo',
+            hierba !== null && hierba.canvas === 'respaldo de 102',
+            'el suelo es el caso que dejo la pantalla en negro');
+
+        // Y una moneda, que tampoco tiene.
+        check('y una moneda tambien',
+            bq.get(3031) !== null && respaldo.pedidos.indexOf(3031) !== -1,
+            'pedidos al respaldo: ' + respaldo.pedidos.join(', '));
+
+        // Sin respaldo devuelve null, que es lo correcto: el que no sabe, no inventa.
+        const solo = new BrowserQuestProvider({});
+
+        check('sin respaldo devuelve null en vez de inventarse algo',
+            solo.get(102) === null,
+            'un proveedor sin respaldo y sin dibujo no puede devolver nada, y decirlo es ' +
+            'mejor que devolver un rectangulo que nadie ha pedido');
     }
 
     console.log('');
