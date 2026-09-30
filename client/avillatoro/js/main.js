@@ -428,7 +428,7 @@ function boot() {
     const diagnostics = document.getElementById('diagnostics');
     const form = document.getElementById('login');
     const nameInput = document.getElementById('name');
-    const chatForm = document.getElementById('chat-form');
+    const chatForm = document.getElementById('chat-bar');
     const chatInput = document.getElementById('chat');
     const overlay = document.getElementById('overlay');
 
