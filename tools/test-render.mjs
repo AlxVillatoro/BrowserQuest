@@ -513,6 +513,61 @@ function main() {
     }
 
     // =======================================================================
+    // =======================================================================
+    section('10. El dibujo cae DENTRO del lienzo');
+    // =======================================================================
+
+    {
+        /*
+         * ESTA SECCION EXISTE POR UN FALLO QUE NINGUNA OTRA PODIA VER.
+         *
+         * `camera.worldToScreen` centra sumando media pantalla, y el renderer volvia a
+         * desplazar el lienzo otra media pantalla. Las dos piezas eran correctas y estaban
+         * comprobadas por separado; el error estaba en la SUMA de las dos, y el sintoma era
+         * una pantalla negra con un trozo de mapa en la esquina inferior derecha.
+         *
+         * Lo que se comprueba aqui es que el DESTINO FINAL cae donde tiene que caer, que es
+         * la unica forma de ver un desplazamiento contado dos veces.
+         */
+        const ANCHO = 1520;
+        const ALTO = 780;
+        const cam = new Camera({ width: ANCHO, height: ALTO });
+        cam.setCenter(41, 40, 7);
+
+        // El desplazamiento del renderer, que solo debe alinear la rejilla al pixel.
+        const origenX = cam.width / 2 - cam.centerX * cam.tileSize;
+        const origenY = cam.height / 2 - cam.centerY * cam.tileSize;
+        const desplazamiento = {
+            x: -(origenX - Math.floor(origenX)),
+            y: -(origenY - Math.floor(origenY))
+        };
+
+        const centro = cam.worldToScreen(41, 40, 7);
+        const destino = { x: centro.x + desplazamiento.x, y: centro.y + desplazamiento.y };
+
+        check('lo que senala la camara cae en el CENTRO del lienzo',
+            Math.abs(destino.x - ANCHO / 2) <= 1 && Math.abs(destino.y - ALTO / 2) <= 1,
+            'destino (' + destino.x.toFixed(1) + ', ' + destino.y.toFixed(1) + ') de un ' +
+            'lienzo de ' + ANCHO + 'x' + ALTO);
+
+        check('y el desplazamiento viejo SI lo sacaba',
+            centro.x + ANCHO / 2 >= ANCHO && centro.y + ALTO / 2 >= ALTO,
+            'la formula vieja sumaba media pantalla, asi que el centro caia justo en el ' +
+            'borde inferior derecho (' + (centro.x + ANCHO / 2) + ', ' +
+            (centro.y + ALTO / 2) + ') y el resto del mapa quedaba fuera');
+
+        // El desplazamiento solo quita la parte fraccionaria, asi que nunca llega a un pixel.
+        check('el desplazamiento es de alineacion, no de centrado',
+            Math.abs(desplazamiento.x) < 1 && Math.abs(desplazamiento.y) < 1,
+            'medir ' + desplazamiento.x.toFixed(2) + ' px es alinear; medir media pantalla ' +
+            'es centrar, y centrar ya lo hace worldToScreen');
+
+        // Con la camara en coordenadas enteras no hay nada que alinear.
+        check('una camara en coordenadas enteras no necesita alineacion',
+            desplazamiento.x === 0 && desplazamiento.y === 0,
+            'el suelo queda en pixeles enteros sin tocar nada');
+    }
+
     console.log('');
     if (failures === 0) {
         console.log('\u001b[32mTodo OK\u001b[0m — el cliente ordena, desplaza y viste como debe.');

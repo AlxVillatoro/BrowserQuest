@@ -67,11 +67,27 @@ export class Renderer {
         ctx.fillStyle = '#101014';
         ctx.fillRect(0, 0, this.cssWidth, this.cssHeight);
 
-        // El desplazamiento del lienzo alinea la rejilla al píxel. Sin esto, al
-        // moverse la cámara en coordenadas fraccionarias el navegador interpola las
-        // texturas y la imagen tiembla.
-        const offsetX = Math.round(this.cssWidth / 2 - (camera.centerX * camera.tileSize) % camera.tileSize);
-        const offsetY = Math.round(this.cssHeight / 2 - (camera.centerY * camera.tileSize) % camera.tileSize);
+        /*
+         * ESTE DESPLAZAMIENTO ES SÓLO PARA ALINEAR LA REJILLA AL PÍXEL. NO CENTRA.
+         *
+         * Aquí se sumaba `cssWidth / 2` y `cssHeight / 2`, y `camera.worldToScreen` YA SUMA
+         * `width / 2` y `height / 2` para centrar. Las dos cosas juntas movían todo el dibujo
+         * media pantalla hacia abajo y hacia la derecha: el resultado era una pantalla negra
+         * con un trozo de mapa en la esquina inferior derecha, que es justo lo que se veía.
+         *
+         * Y por eso no lo cazó ninguna prueba: `worldToScreen` y la lista de dibujo hacían lo
+         * correcto, y las dos se comprueban por separado. El error estaba en la suma de las
+         * dos, y eso sólo se ve dibujando.
+         *
+         * Lo que hace falta es quitar la PARTE FRACCIONARIA del origen, que es lo que evita
+         * que el navegador interpole las texturas al moverse la cámara en coordenadas
+         * fraccionarias. Todos los tiles comparten esa parte fraccionaria, así que restarla
+         * una vez los deja a todos en píxeles enteros.
+         */
+        const originX = camera.width / 2 - camera.centerX * camera.tileSize;
+        const originY = camera.height / 2 - camera.centerY * camera.tileSize;
+        const offsetX = -(originX - Math.floor(originX));
+        const offsetY = -(originY - Math.floor(originY));
 
         ctx.save();
         ctx.translate(offsetX, offsetY);
