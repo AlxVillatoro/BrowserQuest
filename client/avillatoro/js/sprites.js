@@ -229,8 +229,22 @@ export class SprProvider {
 }
 
 /** Elige el proveedor según lo que haya configurado. */
+import { BrowserQuestProvider } from './browserquest.js';
+
 export function createProvider(options) {
     const opts = options || {};
+    /*
+     * LOS SPRITES DE BROWSERQUEST.
+     *
+     * El nombre del proveedor lo pide main.js y aqui se decide cual se construye. Si el
+     * nombre no se reconoce se cae al de procedimiento, que es lo que hace que el cliente
+     * siga funcionando aunque alguien escriba mal el suyo: un cliente que no arranca por
+     * una cadena mal escrita es peor que uno que dibuja rectangulos.
+     */
+    if (opts.provider === 'browserquest') {
+        return new BrowserQuestProvider({ resolucion: opts.resolucion });
+    }
+
     if (opts.provider === 'spr' && opts.assets) {
         return new SprProvider({ assets: opts.assets });
     }

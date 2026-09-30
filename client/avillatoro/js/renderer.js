@@ -145,6 +145,24 @@ export class Renderer {
         this.ctx.ellipse(x + TILE / 2, y + TILE - 4, TILE / 3, TILE / 6, 0, 0, Math.PI * 2);
         this.ctx.fill();
 
+        /*
+         * SI HAY SPRITE DE VERDAD, SE DIBUJA Y SE SALTA EL MUÑECO DE COLORES.
+         *
+         * El proveedor devuelve null mientras el sprite no esta cargado y tambien cuando no
+         * hay dibujo para esa criatura -Tibia tiene cientos de monstruos y BrowserQuest una
+         * docena-, asi que el camino de procedimiento no se borra: es el que queda para todo
+         * lo que no tiene equivalente.
+         *
+         * El `else` cierra justo antes de la barra de vida, para que el nombre y la vida se
+         * dibujen SIEMPRE, con sprite o sin el: son interfaz, no cuerpo.
+         */
+        const sprite = this.provider.getCreature ? this.provider.getCreature(op) : null;
+
+        if (sprite) {
+            this.ctx.drawImage(sprite.canvas,
+                Math.round(op.sx), Math.round(op.sy) - sprite.anchorY + TILE);
+        } else {
+
         // Los pies, lo más abajo; luego las piernas, el cuerpo y la cabeza. Se dibujan
         // de abajo arriba para que cada parte tape a la anterior, que es el mismo
         // criterio que el orden de las casillas.
@@ -203,6 +221,8 @@ export class Renderer {
             this.ctx.strokeStyle = 'rgba(0,0,0,0.55)';
             this.ctx.lineWidth = 1;
             this.ctx.strokeRect(x + 8.5, y + 1.5, TILE - 17, TILE - 9);
+        }
+
         }
 
         if (this.showHealth && op.health !== undefined && op.health < 100) {

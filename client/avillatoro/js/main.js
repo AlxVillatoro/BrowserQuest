@@ -37,7 +37,7 @@ class Game {
 
         this.world = new ClientWorld();
         this.camera = new Camera({ width: 960, height: 640, tileSize: TILE });
-        this.provider = createProvider({});
+        this.provider = createProvider({ provider: 'browserquest' });
         this.renderer = new Renderer({
             canvas: this.canvas,
             provider: this.provider
